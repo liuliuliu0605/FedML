@@ -7,7 +7,7 @@ import torch
 
 from ....core.security.fedml_attacker import FedMLAttacker
 from ....core.security.fedml_defender import FedMLDefender
-from .utils import cal_mixing_consensus_speed
+from .utils import cal_mixing_consensus_speed, agg_parameter_estimation
 
 
 class HierFedAVGCloudAggregator(object):
@@ -39,6 +39,7 @@ class HierFedAVGCloudAggregator(object):
         self.device = device
         self.model_dict = dict()
         self.sample_num_dict = dict()
+        self.param_estimation_dict = dict()
         self.flag_client_model_uploaded_dict = dict()
         for idx in range(self.worker_num):
             self.flag_client_model_uploaded_dict[idx] = False
@@ -49,10 +50,11 @@ class HierFedAVGCloudAggregator(object):
     def set_global_model_params(self, model_parameters):
         self.aggregator.set_model_params(model_parameters)
 
-    def add_local_trained_result(self, index, model_params_list, sample_num):
+    def add_local_trained_result(self, index, model_params_list, sample_num, param_estimation_dict):
         logging.info("add_model. index = %d" % index)
         self.model_dict[index] = model_params_list
         self.sample_num_dict[index] = sample_num
+        self.param_estimation_dict[index] = param_estimation_dict
         self.flag_client_model_uploaded_dict[index] = True
 
     def check_whether_all_receive(self):
@@ -110,6 +112,14 @@ class HierFedAVGCloudAggregator(object):
         edge_model_list = [None for _ in range(self.worker_num)]
 
         p = cal_mixing_consensus_speed(topology_manager.topology, self.model_dict[0][0][0], self.args)
+
+        if (
+                self.args.round_idx == 0
+                and hasattr(self.args, 'enable_parameter_estimation')
+                and self.args.enable_parameter_estimation
+        ):
+            log_wandb = True if hasattr(self.args, 'enable_wandb') and self.args.enable_wandb else False
+            agg_param_estimation_dict = agg_parameter_estimation(self.param_estimation_dict, 'psi', log_wandb)
 
         for group_round_idx in range(group_comm_round):
             model_list = []

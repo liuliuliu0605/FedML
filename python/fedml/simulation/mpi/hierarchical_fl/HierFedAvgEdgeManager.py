@@ -42,10 +42,13 @@ class HierFedAVGEdgeManager(FedMLCommManager):
 
         self.group.setup_clients(total_client_indexes)
         self.args.round_idx = 0
-        w_group_list, sample_num_list = self.group.train(self.args.round_idx, global_model_params,
-                                                         sampled_client_indexes, total_sampled_data_size)
 
-        self.send_model_to_cloud(0, w_group_list, sample_num_list)
+        w_group_list, sample_num_list, param_estimation_dict = self.group.train(self.args.round_idx,
+                                                                                global_model_params,
+                                                                                sampled_client_indexes,
+                                                                                total_sampled_data_size)
+
+        self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
 
     def handle_message_receive_model_from_cloud(self, msg_params):
         logging.info("handle_message_receive_model_from_cloud.")
@@ -55,15 +58,15 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         edge_index = msg_params.get(MyMessage.MSG_ARG_KEY_EDGE_INDEX)
 
         self.args.round_idx += 1
-        w_group_list, sample_num_list = self.group.train(self.args.round_idx, global_model_params,
-                                                         sampled_client_indexes, total_sampled_data_size)
-        self.send_model_to_cloud(0, w_group_list, sample_num_list)
+        w_group_list, sample_num_list, param_estimation_dict = \
+            self.group.train(self.args.round_idx, global_model_params, sampled_client_indexes, total_sampled_data_size)
+        self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
 
         if self.args.round_idx == self.num_rounds:
             post_complete_message_to_sweep_process(self.args)
             self.finish()
 
-    def send_model_to_cloud(self, receive_id, w_group_list, edge_sample_num):
+    def send_model_to_cloud(self, receive_id, w_group_list, edge_sample_num, param_estimation_dict):
         message = Message(
             MyMessage.MSG_TYPE_E2C_SEND_MODEL_TO_CLOUD,
             self.get_sender_id(),
@@ -71,4 +74,5 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         )
         message.add_params(MyMessage.MSG_ARG_KEY_MODEL_PARAMS_LIST, w_group_list)
         message.add_params(MyMessage.MSG_ARG_KEY_NUM_SAMPLES, edge_sample_num)
+        message.add_params(MyMessage.MSG_ARG_KEY_PARAMETER_ESTIMATION_DICT, param_estimation_dict)
         self.send_message(message)

@@ -1,5 +1,6 @@
 import copy
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -48,3 +49,70 @@ class HFLClient(Client):
                 optimizer.step()
 
         return copy.deepcopy(self.model.cpu().state_dict())
+
+    def estimate_parameters(self, w, scaled_loss_factor=1.0):
+        self.model.load_state_dict(w)
+        self.model.to(self.device)
+
+        scaled_loss_factor = min(scaled_loss_factor, 1.0)
+        if self.args.client_optimizer == "sgd":
+            optimizer = torch.optim.SGD(self.model.parameters(), lr=self.args.learning_rate)
+        else:
+            optimizer = torch.optim.Adam(
+                filter(lambda p: p.requires_grad, self.model.parameters()),
+                lr=self.args.learning_rate,
+                weight_decay=self.args.weight_decay,
+                amsgrad=True,
+            )
+
+        batch_num = len(self.local_training_data)
+        grad = {}
+        loss_value = 0
+
+        # calculate full gradient of the first local update
+        self.model.zero_grad()
+        for x, labels in self.local_training_data:
+            x, labels = x.to(self.device), labels.to(self.device)
+            log_probs = self.model(x)
+            loss = self.criterion(log_probs, labels) * scaled_loss_factor  # rewrite loss function
+            loss /= batch_num
+            loss_value += loss.item()
+            loss.backward()
+
+        for name, param in self.model.named_parameters():
+            grad[name] = copy.deepcopy(param.grad.cpu().numpy())
+
+        optimizer.step()
+
+        grad2 = {}
+        grad_square = 0
+
+        # calculate the variance of stochastic gradients
+        for x, labels in self.local_training_data:
+            x, labels = x.to(self.device), labels.to(self.device)
+            self.model.zero_grad()
+            log_probs = self.model(x)
+            loss = self.criterion(log_probs, labels) * scaled_loss_factor
+            loss.backward()
+
+            for name, param in self.model.named_parameters():
+                grad_square += (param.grad ** 2).sum().item() / batch_num
+                if name not in grad2:
+                    grad2[name] = copy.deepcopy(param.grad.cpu().numpy()) / batch_num
+                else:
+                    grad2[name] += param.grad.cpu().numpy() / batch_num
+
+        sigma = grad_square
+        grad_delta, model_delta = 0, 0
+        for name, param in self.model.named_parameters():
+            sigma -= (grad2[name]**2).sum().item()
+            grad_delta += ((grad[name] - grad2[name])**2).sum().item()
+            model_delta += ((w[name] - param.detach().cpu().numpy())**2).sum().item()
+
+        return {
+            'sigma': max(sigma, 0),
+            'L': grad_delta / model_delta,
+            'grad': grad,
+            'K': batch_num,
+            'loss': loss_value
+        }

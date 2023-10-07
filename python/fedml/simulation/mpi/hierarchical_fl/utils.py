@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 
 import numpy as np
@@ -7,6 +8,70 @@ import wandb
 import logging
 
 from sklearn.cluster import KMeans
+from math import sqrt
+
+
+def calculate_optimal_tau(loss_delta, K, L, sigma, gamma, psi, p, agg_cost, mix_cost, U, N_tilde, zeta=1.0):
+
+    def h(tau):
+        a1 = L * loss_delta / sqrt(K) + sigma * zeta / sqrt(K) / sqrt(N_tilde)
+        a2 = sigma * zeta + K * gamma * zeta
+        a3 = K * sigma * zeta
+        a4 = K * psi * zeta
+
+        d_agg = agg_cost
+        d_mix = mix_cost
+
+        phi = (tau * d_agg + d_mix) / U / tau
+
+        A = a1 * sqrt(phi)
+        B = phi * (a2 + a3 * tau / p + a4 * tau**2 / p**2)
+        H = A + B
+
+        return H
+
+    opt_tau = 1
+    opt_value = sys.maxsize
+    for tau in range(1, 200):
+        h_value = h(tau)
+        if h_value < opt_value:
+            opt_tau = tau
+            opt_value = h_value
+
+    return opt_tau
+
+
+def agg_parameter_estimation(param_estimation_dict, var_name, log_wandb=False):
+    agg_param_estimation_dict = {}
+    size = len(param_estimation_dict)
+    for k in param_estimation_dict[0].keys():
+        if k == 'grad':
+            agg_param_estimation = {}
+            var = 0
+            for name in param_estimation_dict[0][k]:
+                for i in range(size):
+                    layer_grad = param_estimation_dict[i][k][name]
+                    if k not in agg_param_estimation:
+                        agg_param_estimation[name] = layer_grad / size
+                    else:
+                        agg_param_estimation[name] += layer_grad / size
+                    var += (layer_grad ** 2).sum() / size
+
+            for name in agg_param_estimation:
+                var -= (agg_param_estimation[name] ** 2).sum()
+
+            agg_param_estimation_dict[var_name] = var
+            if var_name == 'gamma':
+                agg_param_estimation_dict['grad'] = agg_param_estimation
+
+        else:
+            agg_param_estimation_dict[k] = sum(
+                [param_estimation_dict[idx][k] for idx in range(size)]
+            ) / size
+
+    if log_wandb:
+        wandb.log(agg_param_estimation_dict)
+    return agg_param_estimation_dict
 
 
 def cal_mixing_consensus_speed(topo_weight_matrix, global_round_idx, args):
@@ -137,3 +202,31 @@ def post_complete_message_to_sweep_process(args):
     with os.fdopen(pipe_fd, "w") as pipe:
         pipe.write("training is finished! \n%s\n" % (str(args)))
     time.sleep(3)
+
+
+if __name__ == '__main__':
+
+    params = {'sigma': 19.19629517252362, 'L': 7225.820201343054, 'gamma': 34.19849039359468,
+              'psi': 0.29461052466206183,
+              'K': 7.417171717171717, 'loss': 4.122456542323485}
+
+    params = {'sigma': 19.140667618985383, 'L': 7095.644001106019, 'gamma': 33.10166782010226,
+              'psi': 0.7018323426485723, 'K': 8.14754010695187, 'loss': 4.135336632172672}
+
+    loss_delta = params['loss']
+    K = params['K']
+    L = params['L']
+    sigma = params['sigma']
+    gamma = params['gamma']
+    psi = params['psi']
+    p = 1.0
+    agg_cost = 1
+    mix_cost = 100
+    U = 100
+    N_tilde = 1000  # TODO
+    total_params =None
+    zeta = 1#1e-10 * p**2
+
+    opt_tau = calculate_optimal_tau(loss_delta, K, L, sigma, gamma, psi, p, agg_cost, mix_cost, U, N_tilde,
+                                    total_params, zeta)
+    print(opt_tau)

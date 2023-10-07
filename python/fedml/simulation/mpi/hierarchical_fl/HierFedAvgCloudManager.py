@@ -90,9 +90,10 @@ class HierFedAVGCloudManager(FedMLCommManager):
         sender_id = msg_params.get(MyMessage.MSG_ARG_KEY_SENDER)
         model_params_list = msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS_LIST)
         sample_num_list = msg_params.get(MyMessage.MSG_ARG_KEY_NUM_SAMPLES)
+        param_estimation_dict = msg_params.get(MyMessage.MSG_ARG_KEY_PARAMETER_ESTIMATION_DICT)
 
         self.aggregator.add_local_trained_result(
-            sender_id - 1, model_params_list, sample_num_list
+            sender_id - 1, model_params_list, sample_num_list, param_estimation_dict
         )
         b_all_received = self.aggregator.check_whether_all_receive()
         logging.info("b_all_received = " + str(b_all_received))

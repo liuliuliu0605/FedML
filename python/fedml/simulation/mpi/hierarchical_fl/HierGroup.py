@@ -2,6 +2,7 @@ import logging
 
 from .HierClient import HFLClient
 from ...sp.fedavg.fedavg_api import FedAvgAPI
+from .utils import agg_parameter_estimation
 
 
 class HierGroup(FedAvgAPI):
@@ -48,6 +49,15 @@ class HierGroup(FedAvgAPI):
         return self.group_sample_number
 
     def train(self, round_idx, w, sampled_client_indexes, total_sampled_data_size=0):
+        if (
+                round_idx == 0
+                and hasattr(self.args, 'enable_parameter_estimation')
+                and self.args.enable_parameter_estimation
+        ):
+            param_estimation_dict = self._estimate(w, sampled_client_indexes)
+        else:
+            param_estimation_dict = {}
+
         sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes]
         w_group = w
         w_group_list = []
@@ -78,4 +88,16 @@ class HierGroup(FedAvgAPI):
 
             # update the group weight
             w_group = w_group_list[-1][1]
-        return w_group_list, sample_num_list
+        return w_group_list, sample_num_list, param_estimation_dict
+
+    def _estimate(self, w, sampled_client_indexes):
+        sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes]
+        w_group = w
+        param_estimation_dict = {}
+        for idx, client in enumerate(sampled_client_list):
+            param_rs = client.estimate_parameters(w_group)
+            param_estimation_dict[idx] = param_rs
+
+        agg_param_estimation_dict = agg_parameter_estimation(param_estimation_dict, 'gamma')
+
+        return agg_param_estimation_dict
