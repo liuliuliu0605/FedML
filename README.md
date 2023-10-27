@@ -1,4 +1,16 @@
-# FedML: The Community Building Open and Collaborative AI Anywhere at Any Scale
+from mpi4py import MPI
+import numpy as np
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
+if rank == 0:
+    data = range(10)
+    comm.send(data, dest=1, tag=11)
+    print("process {} send {}...".format(rank, data))
+else:
+    data = comm.recv(source=0, tag=11)
+
+[//]: # (    print&#40;"process {} recv {}...".format&#40;rank, data&#41;&#41;# FedML: The Community Building Open and Collaborative AI Anywhere at Any Scale)
 
 <div align="center">
  <img src="doc/img/fedml_logo_light_mode.png" width="400px">
