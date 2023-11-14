@@ -1,5 +1,5 @@
 import copy
-
+import time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -86,14 +86,19 @@ class HFLClient(Client):
 
         grad2 = {}
         grad_square = 0
-
+        local_update_time = 0
         # calculate the variance of stochastic gradients
         for x, labels in self.local_training_data:
+
+            start_time = time.time()
             x, labels = x.to(self.device), labels.to(self.device)
             self.model.zero_grad()
             log_probs = self.model(x)
             loss = self.criterion(log_probs, labels) * scaled_loss_factor
             loss.backward()
+            end_time = time.time()
+            time_consumed = end_time - start_time
+            local_update_time += time_consumed
 
             for name, param in self.model.named_parameters():
                 grad_square += (param.grad ** 2).sum().item() / batch_num
@@ -114,5 +119,6 @@ class HFLClient(Client):
             'L': grad_delta / model_delta,
             'grad': grad,
             'K': batch_num,
-            'loss': loss_value
+            'loss': loss_value,
+            'local_update_time': local_update_time,
         }

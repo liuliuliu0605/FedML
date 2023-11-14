@@ -3,22 +3,25 @@ import logging
 from .message_define import MyMessage
 from ....core.distributed.fedml_comm_manager import FedMLCommManager
 from ....core.distributed.communication.message import Message
-from .utils import post_complete_message_to_sweep_process
+from .utils import post_complete_message_to_sweep_process, time_consuming_one_round, \
+    cal_mixing_consensus_speed, calculate_optimal_tau
+
 
 class HierFedAVGCloudManager(FedMLCommManager):
     def __init__(
-        self,
-        args,
-        aggregator,
-        group_indexes,
-        group_to_client_indexes,
-        comm=None,
-        rank=0,
-        size=0,
-        backend="MPI",
-        topology_manager=None
-        # is_preprocessed=False,
-        # preprocessed_client_lists=None,
+            self,
+            args,
+            aggregator,
+            group_indexes,
+            group_to_client_indexes,
+            comm=None,
+            rank=0,
+            size=0,
+            backend="MPI",
+            topology_manager=None,
+            network=None,
+            # is_preprocessed=False,
+            # preprocessed_client_lists=None,
     ):
         super().__init__(args, comm, rank, size, backend)
         self.args = args
@@ -28,6 +31,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
         self.round_num = args.comm_round
         self.args.round_idx = 0
         self.topology_manager = topology_manager
+        self.network = network
 
         total_clients = len(self.group_indexes)
         self.group_to_client_num_per_round = [
@@ -37,9 +41,14 @@ class HierFedAVGCloudManager(FedMLCommManager):
 
         remain_client_num_list_per_round = args.client_num_per_round - sum(self.group_to_client_num_per_round)
         while remain_client_num_list_per_round > 0:
-            self.group_to_client_num_per_round[remain_client_num_list_per_round-1] += 1
+            self.group_to_client_num_per_round[remain_client_num_list_per_round - 1] += 1
             remain_client_num_list_per_round -= 1
 
+        self.convergence_param_dict = {}
+        if hasattr(self.args, 'enable_ns3') and self.args.enable_ns3:
+            self.args.ns3_time = 0
+        self.trigger_dynamic_group_comm = True if self.args.group_comm_round <= 0 else False
+        self.args.group_comm_round = 1 if self.args.group_comm_round <= 0 else self.args.group_comm_round
         # self.is_preprocessed = is_preprocessed
         # self.preprocessed_client_lists = preprocessed_client_lists
 
@@ -74,10 +83,17 @@ class HierFedAVGCloudManager(FedMLCommManager):
             self.send_message_init_config(
                 process_id,
                 global_model_params,
-                self.group_to_client_indexes[process_id - 1],
-                sampled_group_to_client_indexes[process_id - 1],
+                self.group_to_client_indexes,
+                sampled_group_to_client_indexes,
                 total_sampled_data_size,
                 process_id - 1
+            )
+
+        if self.args.enable_ns3:
+            # time consumed int the coming round
+            time_consuming_one_round(
+                self.args, self.rank, self.comm, self.network, sampled_group_to_client_indexes, global_model_params,
+                self.topology_manager, list(range(1, self.size))
             )
 
     def register_message_receive_handlers(self):
@@ -87,6 +103,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
         )
 
     def handle_message_receive_model_from_edge(self, msg_params):
+        logging.info("handle_message_receive_model_from_edge.")
         sender_id = msg_params.get(MyMessage.MSG_ARG_KEY_SENDER)
         model_params_list = msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS_LIST)
         sample_num_list = msg_params.get(MyMessage.MSG_ARG_KEY_NUM_SAMPLES)
@@ -99,14 +116,43 @@ class HierFedAVGCloudManager(FedMLCommManager):
         logging.info("b_all_received = " + str(b_all_received))
         if b_all_received:
             # If topology_manage is None, it is simple average. Otherwise, it is mixing between neighbours.
-            if self.topology_manager is None:
+            global_model_params = None
+            global_model_params_list = []
+            if self.args.group_comm_pattern in ['centralized', 'allreduce']:
                 global_model_params = self.aggregator.aggregate()
             else:
                 global_model_params_list = self.aggregator.mix(self.topology_manager)
 
+            if (
+                    self.args.round_idx == 0 and self.trigger_dynamic_group_comm
+                    or self.args.enable_parameter_estimation
+            ):
+                self.convergence_param_dict = self.aggregator.aggregate_estimated_params()
+
+            if self.trigger_dynamic_group_comm:
+                assert self.args.enable_ns3 is True
+                p = cal_mixing_consensus_speed(self.args, self.topology_manager.topology)
+
+                config_param = "{}-{}".format(self.args.group_comm_pattern, self.args.group_comm_round)
+                data = self.network.get_history(config_param)
+
+                time_dict = {
+                    "agg_cost": data[1].mean()/self.args.group_comm_round,
+                    "mix_cost": data[2].mean(),
+                    "budget": self.args.time_budget
+                }
+                N_tilde = self.args.client_num_in_total  # TODO
+
+                # calculate optimal tau
+                next_group_comm_round = calculate_optimal_tau(self.args,
+                                                              self.convergence_param_dict,
+                                                              time_dict, p, N_tilde, zeta=1.0)
+                self.args.group_comm_round = next_group_comm_round
+
             # start the next round
             self.args.round_idx += 1
-            if self.args.round_idx == self.round_num:
+            if self.args.round_idx == self.round_num or \
+                    self.args.enable_ns3 and 0 < self.args.time_budget <= self.args.ns3_time:
                 post_complete_message_to_sweep_process(self.args)
                 self.finish()
                 return
@@ -131,16 +177,24 @@ class HierFedAVGCloudManager(FedMLCommManager):
             )
 
             for receiver_id in range(1, self.size):
-                if self.topology_manager is not None:
-                    global_model_params = global_model_params_list[receiver_id - 1]
-                else:
+                if self.args.group_comm_pattern in ['centralized', 'allreduce']:
                     total_sampled_data_size = 0
+                else:
+                    global_model_params = global_model_params_list[receiver_id - 1]
+
                 self.send_message_sync_model_to_edge(
                     receiver_id,
                     global_model_params,
-                    sampled_group_to_client_indexes[receiver_id - 1],
+                    sampled_group_to_client_indexes,
                     total_sampled_data_size,
                     receiver_id - 1
+                )
+
+            if self.args.enable_ns3:
+                # time consumed int the coming round
+                time_consuming_one_round(
+                    self.args, self.rank, self.comm, self.network, sampled_group_to_client_indexes, global_model_params,
+                    self.topology_manager, list(range(1, self.size))
                 )
 
     def send_message_init_config(self, receive_id, global_model_params, total_client_indexes,
@@ -152,11 +206,16 @@ class HierFedAVGCloudManager(FedMLCommManager):
         message.add_params(MyMessage.MSG_ARG_KEY_SAMPLED_EDGE_CLIENTS, sampled_client_indexed)
         message.add_params(MyMessage.MSG_ARG_KEY_TOTAL_SAMPLED_DATA_SIZE, total_sampled_data_size)
         message.add_params(MyMessage.MSG_ARG_KEY_MODEL_PARAMS, global_model_params)
-        message.add_params(MyMessage.MSG_ARG_KEY_EDGE_INDEX, str(edge_index))
+        message.add_params(MyMessage.MSG_ARG_KEY_EDGE_INDEX, edge_index)
+        if self.topology_manager is not None:
+            message.add_params(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER, self.topology_manager)
+        # if enabling dynamic group communication, the default group_comm_round is set 1
+        if self.trigger_dynamic_group_comm:
+            message.add_params(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND, self.args.group_comm_round)
         self.send_message(message)
 
     def send_message_sync_model_to_edge(
-        self, receive_id, global_model_params, sampled_client_indexed, total_sampled_data_size, edge_index
+            self, receive_id, global_model_params, sampled_client_indexed, total_sampled_data_size, edge_index
     ):
         logging.info("send_message_sync_model_to_edge. receive_id = %d" % receive_id)
         message = Message(
@@ -167,5 +226,9 @@ class HierFedAVGCloudManager(FedMLCommManager):
         message.add_params(MyMessage.MSG_ARG_KEY_SAMPLED_EDGE_CLIENTS, sampled_client_indexed)
         message.add_params(MyMessage.MSG_ARG_KEY_TOTAL_SAMPLED_DATA_SIZE, total_sampled_data_size)
         message.add_params(MyMessage.MSG_ARG_KEY_MODEL_PARAMS, global_model_params)
-        message.add_params(MyMessage.MSG_ARG_KEY_EDGE_INDEX, str(edge_index))
+        message.add_params(MyMessage.MSG_ARG_KEY_EDGE_INDEX, edge_index)
+        if self.topology_manager is not None:
+            message.add_params(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER, self.topology_manager)
+        if self.trigger_dynamic_group_comm:
+            message.add_params(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND, self.args.group_comm_round)
         self.send_message(message)

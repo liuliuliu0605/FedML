@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# run the following command:
+# ./run_step_by_step_example.sh 10 config/mnist_lr/fedml_config_topo.yaml
+
 WORKER_NUM=$1
 CONFIG_PATH=$2
 

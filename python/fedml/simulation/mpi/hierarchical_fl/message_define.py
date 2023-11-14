@@ -26,6 +26,8 @@ class MyMessage(object):
     MSG_ARG_KEY_SAMPLED_EDGE_CLIENTS = "sampled_edge_clients"
     MSG_ARG_KEY_TOTAL_SAMPLED_DATA_SIZE = "total_sampled_data_size"
     MSG_ARG_KEY_PARAMETER_ESTIMATION_DICT = "param_estimation_dict"
+    MSG_ARG_KEY_TOPOLOGY_MANAGER = "topology_manager"
+    MSG_ARG_KEY_GROUP_COMM_ROUND = "group_comm_round"
 
     MSG_ARG_KEY_TRAIN_CORRECT = "train_correct"
     MSG_ARG_KEY_TRAIN_ERROR = "train_error"

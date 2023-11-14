@@ -4,10 +4,11 @@ import random
 import time
 import numpy as np
 import torch
+import wandb
 
 from ....core.security.fedml_attacker import FedMLAttacker
 from ....core.security.fedml_defender import FedMLDefender
-from .utils import cal_mixing_consensus_speed, agg_parameter_estimation
+from .utils import cal_mixing_consensus_speed, agg_parameter_estimation, calculate_optimal_tau
 
 
 class HierFedAVGCloudAggregator(object):
@@ -66,6 +67,11 @@ class HierFedAVGCloudAggregator(object):
             self.flag_client_model_uploaded_dict[idx] = False
         return True
 
+    def aggregate_estimated_params(self):
+        log_wandb = True if hasattr(self.args, 'enable_wandb') and self.args.enable_wandb else False
+        agg_param_estimation_dict = agg_parameter_estimation(self.args, self.param_estimation_dict, 'psi', log_wandb)
+        return agg_param_estimation_dict
+
     def aggregate(self):
         start_time = time.time()
 
@@ -105,21 +111,11 @@ class HierFedAVGCloudAggregator(object):
         return averaged_params
 
     def mix(self, topology_manager):
-        start_time = time.time()
-
         # Edge server may conduct partial aggregation multiple times, so cloud server will receive a model list
         group_comm_round = len(self.sample_num_dict[0])
         edge_model_list = [None for _ in range(self.worker_num)]
 
-        p = cal_mixing_consensus_speed(topology_manager.topology, self.model_dict[0][0][0], self.args)
-
-        if (
-                self.args.round_idx == 0
-                and hasattr(self.args, 'enable_parameter_estimation')
-                and self.args.enable_parameter_estimation
-        ):
-            log_wandb = True if hasattr(self.args, 'enable_wandb') and self.args.enable_wandb else False
-            agg_param_estimation_dict = agg_parameter_estimation(self.param_estimation_dict, 'psi', log_wandb)
+        # p = cal_mixing_consensus_speed(topology_manager.topology, self.model_dict[0][0][0], self.args)
 
         for group_round_idx in range(group_comm_round):
             model_list = []
@@ -142,9 +138,6 @@ class HierFedAVGCloudAggregator(object):
 
         # update the global model which is cached in the cloud
         self.set_global_model_params(averaged_params)
-
-        end_time = time.time()
-        logging.info("mix time cost: %d" % (end_time - start_time))
         return [edge_model for _, edge_model in edge_model_list]
 
     def _fedavg_aggregation_(self, model_list):
@@ -212,12 +205,11 @@ class HierFedAVGCloudAggregator(object):
         else:
             num_clients = min(client_num_per_round, client_num_in_total)
             np.random.seed(
-                round_idx
+                self.args.random_seed + round_idx
             )  # make sure for each comparison, we are selecting the same clients each round
             client_indexes = np.random.choice(
                 range(client_num_in_total), num_clients, replace=False
             )
-        logging.info("client_indexes = %s" % str(client_indexes))
         return client_indexes
 
     def _generate_validation_set(self, num_samples=10000):
@@ -246,6 +238,7 @@ class HierFedAVGCloudAggregator(object):
         if (
                 global_round_idx % self.args.frequency_of_the_test == 0
                 or global_round_idx == self.args.comm_round * self.args.group_comm_round - 1
+                or self.args.enable_ns3 and 0 < self.args.time_budget <= self.args.ns3_time
         ):
 
             logging.info("################test_on_cloud_for_all_clients : {}".format(global_round_idx))
@@ -263,5 +256,9 @@ class HierFedAVGCloudAggregator(object):
                 metric_result_in_current_round = self.aggregator.test(self.val_global, self.device, self.args)
 
             self.args.round_idx = round_idx
+
+            if self.args.enable_ns3:
+                wandb.log({"Test/Acc": metric_result_in_current_round[0], "time": self.args.ns3_time})
+                wandb.log({"Test/Loss": metric_result_in_current_round[1], "time": self.args.ns3_time})
 
             logging.info("metric_result_in_current_round = {}".format(metric_result_in_current_round))

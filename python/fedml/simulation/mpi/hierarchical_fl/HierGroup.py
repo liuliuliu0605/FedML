@@ -48,12 +48,8 @@ class HierGroup(FedAvgAPI):
             self.group_sample_number += self.train_data_local_num_dict[client_idx]
         return self.group_sample_number
 
-    def train(self, round_idx, w, sampled_client_indexes, total_sampled_data_size=0):
-        if (
-                round_idx == 0
-                and hasattr(self.args, 'enable_parameter_estimation')
-                and self.args.enable_parameter_estimation
-        ):
+    def train(self, round_idx=0, w=None, sampled_client_indexes=None, total_sampled_data_size=0, is_estimate=False):
+        if is_estimate:
             param_estimation_dict = self._estimate(w, sampled_client_indexes)
         else:
             param_estimation_dict = {}
@@ -98,6 +94,6 @@ class HierGroup(FedAvgAPI):
             param_rs = client.estimate_parameters(w_group)
             param_estimation_dict[idx] = param_rs
 
-        agg_param_estimation_dict = agg_parameter_estimation(param_estimation_dict, 'gamma')
+        agg_param_estimation_dict = agg_parameter_estimation(self.args, param_estimation_dict, 'gamma')
 
         return agg_param_estimation_dict

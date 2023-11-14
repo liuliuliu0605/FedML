@@ -3,7 +3,7 @@ import logging
 from .message_define import MyMessage
 from ....core.distributed.fedml_comm_manager import FedMLCommManager
 from ....core.distributed.communication.message import Message
-from .utils import post_complete_message_to_sweep_process
+from .utils import post_complete_message_to_sweep_process, time_consuming_one_round
 
 
 class HierFedAVGEdgeManager(FedMLCommManager):
@@ -15,11 +15,17 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         rank=0,
         size=0,
         backend="MPI",
+        network=None
     ):
         super().__init__(args, comm, rank, size, backend)
         self.num_rounds = args.comm_round
         self.args.round_idx = 0
-        self.group =group
+        self.group = group
+        self.network = network
+
+        if hasattr(self.args, 'enable_ns3') and self.args.enable_ns3:
+            self.args.ns3_time = 0
+        self.trigger_dynamic_group_comm = True if self.args.group_comm_round <= 0 else False
 
     def run(self):
         super().run()
@@ -39,14 +45,34 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         sampled_client_indexes = msg_params.get(MyMessage.MSG_ARG_KEY_SAMPLED_EDGE_CLIENTS)
         total_sampled_data_size = msg_params.get(MyMessage.MSG_ARG_KEY_TOTAL_SAMPLED_DATA_SIZE)
         edge_index = msg_params.get(MyMessage.MSG_ARG_KEY_EDGE_INDEX)
+        topology_manager = msg_params.get(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER)
+        group_comm_round = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND)
 
-        self.group.setup_clients(total_client_indexes)
+        self.group.setup_clients(total_client_indexes[edge_index])
         self.args.round_idx = 0
 
+        if group_comm_round is not None:
+            self.args.group_comm_round = group_comm_round
+
+        if self.args.enable_ns3:
+            # time consumed in the current round
+            time_consuming_one_round(
+                self.args, self.rank, self.comm, self.network, sampled_client_indexes, global_model_params,
+                topology_manager, list(range(1, self.size))
+            )
+
+        is_estimate = False
+        if (
+                self.args.round_idx == 0 and self.trigger_dynamic_group_comm
+                or self.args.enable_parameter_estimation
+        ):
+            is_estimate = True
         w_group_list, sample_num_list, param_estimation_dict = self.group.train(self.args.round_idx,
                                                                                 global_model_params,
-                                                                                sampled_client_indexes,
-                                                                                total_sampled_data_size)
+                                                                                sampled_client_indexes[edge_index],
+                                                                                total_sampled_data_size,
+                                                                                is_estimate)
+
 
         self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
 
@@ -56,10 +82,29 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         total_sampled_data_size = msg_params.get(MyMessage.MSG_ARG_KEY_TOTAL_SAMPLED_DATA_SIZE)
         global_model_params = msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS)
         edge_index = msg_params.get(MyMessage.MSG_ARG_KEY_EDGE_INDEX)
+        topology_manager = msg_params.get(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER)
+        group_comm_round = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND)
 
         self.args.round_idx += 1
+
+        if group_comm_round is not None:
+            self.args.group_comm_round = group_comm_round
+
+        if self.args.enable_ns3:
+            time_consuming_one_round(
+                self.args, self.rank, self.comm, self.network, sampled_client_indexes, global_model_params,
+                topology_manager, list(range(1, self.size))
+            )
+
+        is_estimate = False
+        if (
+                self.args.round_idx == 0 and self.trigger_dynamic_group_comm
+                or self.args.enable_parameter_estimation
+        ):
+            is_estimate = True
         w_group_list, sample_num_list, param_estimation_dict = \
-            self.group.train(self.args.round_idx, global_model_params, sampled_client_indexes, total_sampled_data_size)
+            self.group.train(self.args.round_idx, global_model_params, sampled_client_indexes[edge_index],
+                             total_sampled_data_size, is_estimate)
         self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
 
         if self.args.round_idx == self.num_rounds:

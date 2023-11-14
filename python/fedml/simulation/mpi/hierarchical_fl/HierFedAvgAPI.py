@@ -11,6 +11,8 @@ from ....ml.aggregator.aggregator_creator import create_server_aggregator
 from ....ml.trainer.trainer_creator import create_model_trainer
 from ....core.distributed.topology.symmetric_topology_manager import SymmetricTopologyManager
 
+from ns import ns
+from ....ns3_simulator.network import Network
 
 import numpy as np
 import wandb
@@ -71,7 +73,7 @@ def FedML_HierFedAvg_distributed(
             train_data_local_dict,
             test_data_local_dict,
             client_trainer,
-            server_aggregator
+            server_aggregator,
         )
 
 
@@ -99,9 +101,18 @@ def init_cloud_server(
 
     # set up topology
     topology_manager = None
-    if hasattr(args, "topo_name"):
-        topology_manager = SymmetricTopologyManager(worker_num, args)
+    if args.group_comm_pattern == 'decentralized':
+        topology_manager = SymmetricTopologyManager(worker_num)
         topology_manager.generate_custom_topology(args)
+    elif args.group_comm_pattern == 'allreduce':
+        assert args.topo_name == 'ring'
+        topology_manager = SymmetricTopologyManager(worker_num)
+        topology_manager.generate_custom_topology(args)
+    elif args.group_comm_pattern == 'centralized':
+        topology_manager = None
+
+    # setup ns3 simulator
+    network = setup_ns3_simulator(args, rank, comm)
 
     # aggregator
     aggregator = HierFedAVGCloudAggregator(
@@ -125,7 +136,7 @@ def init_cloud_server(
     stats_group(group_to_client_indexes, train_data_local_dict, train_data_local_num_dict, class_num, args)
 
     server_manager = HierFedAVGCloudManager(args, aggregator, group_indexes, group_to_client_indexes,
-                                            comm, rank, size, backend, topology_manager)
+                                            comm, rank, size, backend, topology_manager, network)
     server_manager.send_init_msg()
     server_manager.run()
 
@@ -163,7 +174,10 @@ def init_edge_server_clients(
         model_trainer
     )
 
-    edge_manager = HierFedAVGEdgeManager(group, args, comm, process_id, size, backend)
+    # setup ns3 simulator
+    network = setup_ns3_simulator(args, process_id, comm)
+
+    edge_manager = HierFedAVGEdgeManager(group, args, comm, process_id, size, backend, network)
     edge_manager.run()
 
 
@@ -183,9 +197,38 @@ def setup_clients(
                 group_to_client_indexes[group_idx] = []
             group_to_client_indexes[group_idx].append(client_idx)
     elif args.group_method == "hetero":
-        clients_type_list = analyze_clients_type(train_data_local_dict, class_num, num_type=args.group_num)
+        clients_type_list = analyze_clients_type(train_data_local_dict, class_num,
+                                                 num_type=args.group_num,
+                                                 random_seed=args.random_seed)
         group_indexes, group_to_client_indexes = hetero_partition_groups(clients_type_list,
                                                                           args.group_num,
                                                                           alpha=args.group_alpha)
 
     return group_indexes, group_to_client_indexes
+
+
+def setup_ns3_simulator(
+    args,
+    process_id,
+    mpi_comm):
+    ns.core.GlobalValue.Bind("SimulatorImplementationType", ns.core.StringValue("ns3::DistributedSimulatorImpl"))
+    # initialize network
+    network = Network(access_link_capacity=args.access_link_capacity,
+                      core_link_capacity=args.core_link_capacity,
+                      lan_capacity=args.lan_capacity,
+                      verbose=False,
+                      mpi_comm=mpi_comm,
+                      seed=args.random_seed)
+
+    network.read_underlay_graph(underlay_name=args.underlay)
+    network.select_edge_pses(ps_num=args.group_num, method='mhrw')
+
+    if args.group_comm_pattern == 'centralized':
+        network.select_cloud_ps(method='centroid')
+
+    # TODO: save in wandb
+    if process_id == 0:
+        network.plot_underlay_graph(save_path="underlay.png")
+        network.plot_ps_connectivity_graph(save_path="connectivity.png")
+
+    return network

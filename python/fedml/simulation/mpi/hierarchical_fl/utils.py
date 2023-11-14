@@ -9,9 +9,78 @@ import logging
 
 from sklearn.cluster import KMeans
 from math import sqrt
+from ns import ns
 
 
-def calculate_optimal_tau(loss_delta, K, L, sigma, gamma, psi, p, agg_cost, mix_cost, U, N_tilde, zeta=1.0):
+def time_consuming_one_round(
+        args, process_id, mpi_comm, network, sampled_client_indexes, global_model_params,
+        topology_manager, system_id_list
+):
+    config_param = "{}-{}".format(args.group_comm_pattern, args.group_comm_round)
+    if args.fast_mode and config_param in network.time_history:
+        print(str(process_id) * 20 + config_param)
+        delay_matrix, region_delay, global_delay = network.get_history(config_param)
+        args.ns3_time += delay_matrix.max()
+    else:
+        print(str(process_id) * 40 + config_param)
+        num_of_model_params = 0
+        for k in global_model_params:
+            num_of_model_params += global_model_params[k].numel()
+
+        network.connect_pses(topology_manager, enable_optimization=True)
+
+        client_num_list = [len(sampled_client_indexes[i]) for i in range(args.group_num)]
+        network.select_clients(client_num_list, method='near_edge_ps')
+
+        comm = ns.cppyy.gbl.Convert2MPIComm(mpi_comm)
+        ns.mpi.MpiInterface.Enable(comm)
+        network.construct_network(graph_partition_method='girvan_newman', system_id_list=system_id_list)
+
+        # run simulation
+        if args.group_comm_pattern == 'decentralized':
+            delay_matrix, region_delay, global_delay = network.run_fl_pfl(model_size=num_of_model_params*4,
+                                                                          group_comm_round=args.group_comm_round,
+                                                                          mix_comm_round=1,
+                                                                          start_time=0, stop_time=10000000)
+        elif args.group_comm_pattern == 'centralized':
+            delay_matrix, region_delay, global_delay = network.run_fl_hfl(model_size=num_of_model_params*4,
+                                                                          group_comm_round=args.group_comm_round,
+                                                                          start_time=0, stop_time=10000000)
+        elif args.group_comm_pattern == 'allreduce':
+            delay_matrix, region_delay, global_delay = network.run_fl_rar(model_size=num_of_model_params*4,
+                                                                          group_comm_round=args.group_comm_round,
+                                                                          start_time=0, stop_time=10000000)
+        else:
+            raise NotImplementedError
+
+        # record consumed time in history
+        network.add_history(config_param, (delay_matrix, region_delay, global_delay))
+
+        ns.mpi.MpiInterface.Disable()
+
+        args.ns3_time += delay_matrix.max()
+
+        if process_id == 0 and args.enable_wandb:
+            wandb.log({"Estimation/ps_client_time": region_delay.mean(), "comm_round": args.round_idx})
+            wandb.log({"Estimation/ps_ps_time": global_delay.mean(), "comm_round": args.round_idx})
+
+            # TODO: save in wandb
+            # network.plot_ps_overlay_topology(save_path="overlay.png")
+
+
+def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, N_tilde, zeta=1.0):
+    # {'sigma': 1.6627908909580238, 'L': 80.46860672820361, 'gamma': 4.5684504507218975, 'psi': 0.041040657805953944,
+    #  'K': 7.530555555555556, 'loss': 2.31964097155026}
+    loss_delta = convergence_param_dict['loss']
+    L = convergence_param_dict['L']
+    sigma = convergence_param_dict['sigma']
+    gamma = convergence_param_dict['gamma']
+    psi = convergence_param_dict['psi']
+    K= convergence_param_dict['K']
+
+    agg_cost = time_dict['agg_cost']
+    mix_cost = time_dict['mix_cost']
+    U = time_dict['budget']
 
     def h(tau):
         a1 = L * loss_delta / sqrt(K) + sigma * zeta / sqrt(K) / sqrt(N_tilde)
@@ -38,10 +107,13 @@ def calculate_optimal_tau(loss_delta, K, L, sigma, gamma, psi, p, agg_cost, mix_
             opt_tau = tau
             opt_value = h_value
 
+    if args.enable_wandb:
+        wandb.log({"Estimation/tau": opt_tau, "comm_round": args.round_idx})
+
     return opt_tau
 
 
-def agg_parameter_estimation(param_estimation_dict, var_name, log_wandb=False):
+def agg_parameter_estimation(args, param_estimation_dict, var_name, log_wandb=False):
     agg_param_estimation_dict = {}
     size = len(param_estimation_dict)
     for k in param_estimation_dict[0].keys():
@@ -70,17 +142,18 @@ def agg_parameter_estimation(param_estimation_dict, var_name, log_wandb=False):
             ) / size
 
     if log_wandb:
-        wandb.log(agg_param_estimation_dict)
+        for key in agg_param_estimation_dict:
+            wandb.log({"Estimation/%s" % key: agg_param_estimation_dict[key], "comm_round": args.round_idx})
     return agg_param_estimation_dict
 
 
-def cal_mixing_consensus_speed(topo_weight_matrix, global_round_idx, args):
+def cal_mixing_consensus_speed(args, topo_weight_matrix):
     n_rows, n_cols = np.shape(topo_weight_matrix)
     assert n_rows == n_cols
     A = np.array(topo_weight_matrix) - 1 / n_rows
     p = 1 - np.linalg.norm(A, ord=2) ** 2
     if args.enable_wandb:
-        wandb.log({"Groups/p": p, "comm_round": global_round_idx})
+        wandb.log({"Estimation/p": p, "comm_round": args.round_idx})
     return p
 
 
@@ -149,7 +222,7 @@ def hetero_partition_groups(clients_type_list, num_groups, alpha=0.5):
     return group_indexes, group_to_client_indexes
 
 
-def analyze_clients_type(train_data_local_dict, class_num, num_type=5):
+def analyze_clients_type(train_data_local_dict, class_num, num_type=5, random_seed=0):
     client_feature_list = []
     for i in range(len(train_data_local_dict)):
         y_train = torch.concat([y for _, y in train_data_local_dict[i]])
@@ -162,9 +235,7 @@ def analyze_clients_type(train_data_local_dict, class_num, num_type=5):
         data_feature /= total
         client_feature_list.append(data_feature)
 
-    kmeans = KMeans(n_clusters=num_type, random_state=0, n_init="auto").fit(client_feature_list)
-
-
+    kmeans = KMeans(n_clusters=num_type, random_state=random_seed).fit(client_feature_list)
 
     # for k in range(num_type):
     #     tmp = []
@@ -200,7 +271,7 @@ def post_complete_message_to_sweep_process(args):
     pipe_fd = os.open(pipe_path, os.O_WRONLY)
 
     with os.fdopen(pipe_fd, "w") as pipe:
-        pipe.write("training is finished! \n%s\n" % (str(args)))
+        pipe.write("training is finished!!!! \n%s\n" % (str(args)))
     time.sleep(3)
 
 
