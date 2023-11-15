@@ -239,13 +239,13 @@ class Sender(ns.network.Application):
         self.record_events(event)
 
     def add_message(self, msg=''):
+        if self.verbose:
+            print("Node %s (sender %s) receives new message" % (self.communicator.get_id(), self._id))
         self.message_queue.append(msg)
         if len(self.message_queue) == 1 and self.is_idle:
             # this case indicates sender has sending all the messages in the queue before
             # message must be sent in order
             self.write_until_buffer_full()
-        if self.verbose:
-            print("Node %s (sender %s) receives new message" % (self.communicator.get_id(), self._id))
 
     def get_current_time(self):
         return self.current_time

@@ -12,6 +12,7 @@ print(args)
 
 seed=1
 enable_mpi = True if MPI.COMM_WORLD.Get_size() > 1 else False
+verbose = False
 
 if enable_mpi:
     ns.core.GlobalValue.Bind("SimulatorImplementationType", ns.core.StringValue("ns3::DistributedSimulatorImpl"))
@@ -35,8 +36,12 @@ local_update_config = {
 }
 
 # initialize network
-network = Network(access_link_capacity=access_link_capacity, core_link_capacity=core_link_capacity,
-                  lan_capacity=1e11, verbose=False, mpi_comm=py_comm, seed=seed)
+network = Network(access_link_capacity=access_link_capacity,
+                  core_link_capacity=core_link_capacity,
+                  lan_capacity=1e11,
+                  verbose=verbose,
+                  mpi_comm=py_comm,
+                  seed=seed)
 topology_manager = SymmetricTopologyManager(ps_num)
 topology_manager.generate_custom_topology(args)
 
@@ -47,7 +52,7 @@ network.select_cloud_ps(method='centroid')
 network.connect_pses(topology_manager, enable_optimization=True)
 network.select_clients(client_num_list, method='near_edge_ps')
 
-for _ in range(5):
+for _ in range(1):
     # sampled_client_indexes = {0: [90, 652, 591], 1: [220, 528, 24], 2: [817, 133], 3: [906, 273], 4: [81, 644], 5: [239, 827], 6: [897, 73],
     #  7: [228, 516], 8: [808, 120]}
     # client_num_list = [len(sampled_client_indexes[i]) for i in range(ps_num)]
@@ -55,7 +60,7 @@ for _ in range(5):
         comm = ns.cppyy.gbl.Convert2MPIComm(py_comm)
         ns.mpi.MpiInterface.Enable(comm)
 
-    network.construct_network(graph_partition_method='girvan_newman',
+    network.construct_network(graph_partition_method='random',
                               system_id_list=list(range(1, MPI.COMM_WORLD.Get_size())))
 
     # network.plot_underlay_graph(save_path="underlay.png")
@@ -66,7 +71,7 @@ for _ in range(5):
     if pattern == 'pfl':
         ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay = network.run_fl_pfl(model_size=model_size,
                                                                             group_comm_round=group_comm_round,
-                                                                            mix_comm_round=group_comm_round,
+                                                                            mix_comm_round=mix_comm_round,
                                                                             local_update_config=local_update_config,
                                                                             start_time=0, stop_time=10000000)
     elif pattern == 'hfl':
@@ -83,8 +88,8 @@ for _ in range(5):
 
     time_consuming_matrix = ps_ps_delay_matrix
     if time_consuming_matrix is not None:
-        # print(ps_agg_delay)
-        # print(ps_mix_delay)
+        print(ps_agg_delay)
+        print(ps_mix_delay)
         print("%.2f MB: total=%.5fs, agg=%.5f, mix=%.5f (%ds)" %
               (model_size / 1e6,
                np.max(time_consuming_matrix),

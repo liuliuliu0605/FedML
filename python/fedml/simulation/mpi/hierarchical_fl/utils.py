@@ -101,7 +101,7 @@ def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, N_tilde, z
 
     opt_tau = 1
     opt_value = sys.maxsize
-    for tau in range(1, 200):
+    for tau in range(1, 1001):
         h_value = h(tau)
         if h_value < opt_value:
             opt_tau = tau
@@ -281,23 +281,21 @@ if __name__ == '__main__':
               'psi': 0.29461052466206183,
               'K': 7.417171717171717, 'loss': 4.122456542323485}
 
-    params = {'sigma': 19.140667618985383, 'L': 7095.644001106019, 'gamma': 33.10166782010226,
-              'psi': 0.7018323426485723, 'K': 8.14754010695187, 'loss': 4.135336632172672}
-
-    loss_delta = params['loss']
-    K = params['K']
-    L = params['L']
-    sigma = params['sigma']
-    gamma = params['gamma']
-    psi = params['psi']
+    cifar_params = {'sigma': 1404, 'L': 2277, 'gamma': 684, 'psi': 9.976, 'K': 4.6, 'loss': 2.4, 'num_params': 600372}
     p = 1.0
-    agg_cost = 1
-    mix_cost = 100
-    U = 100
-    N_tilde = 1000  # TODO
-    total_params =None
-    zeta = 1#1e-10 * p**2
+    N_tilde = 1000
+    convergence_param_dict = cifar_params
+    zeta = 1/convergence_param_dict['num_params'] #1e-10 * p**2
+    zeta = 1/60 #1e-10 * p**2
 
-    opt_tau = calculate_optimal_tau(loss_delta, K, L, sigma, gamma, psi, p, agg_cost, mix_cost, U, N_tilde,
-                                    total_params, zeta)
+    time_dict = {
+        'agg_cost': 1.34,
+        'mix_cost': 2.76,
+        'budget': 5000
+    }
+
+    class ARGS:
+        enable_wandb = False
+
+    opt_tau = calculate_optimal_tau(ARGS(), convergence_param_dict, time_dict, p, N_tilde, zeta)
     print(opt_tau)

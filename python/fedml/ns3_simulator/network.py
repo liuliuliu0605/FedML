@@ -343,14 +343,17 @@ class Network:
         ipv4_n.SetBase(ns.network.Ipv4Address("10.0.0.0"), ns.network.Ipv4Mask("255.255.255.0"))
         for i, _id in enumerate(self.client_id_list):
             lan_nodes = ns.network.NodeContainer()
+            communicator_id_list = []
 
             lan_nodes.Add(self.clients_list[i])
-            communicator_id_list = ["client %s-%s" % (_id, j) for j in range(self.clients_list[i].GetN())]
+            communicator_id_list.extend(["client %s-%s" % (_id, j) for j in range(self.clients_list[i].GetN())])
 
             lan_nodes.Add(self.pses.Get(i))
             communicator_id_list.append("edge_ps %s" % _id)
 
-            lan_nodes.Add(self.backbone_routers.Get(_id))
+            # TODO: if backbone router is added, communication between PSes will be influenced, maybe a loop exists.
+            # lan_nodes.Add(self.backbone_routers.Get(_id))
+
             devices = csma.Install(lan_nodes)
             interfaces = ipv4_n.Assign(devices)
             ipv4_n.NewNetwork()
@@ -727,6 +730,7 @@ class Network:
         # print(self.system_id, ps_ps_delay_matrix)
         ps_agg_delay = np.array([client_ps_aggregation.time_consuming_matrix[:, 0].max() for client_ps_aggregation in client_ps_aggregation_list])
         ps_mix_delay = np.array([ps_ps_delay_matrix[i, :].max()-ps_agg_delay[i] for i in range(self.edge_ps_num)])
+
         return ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay
 
     def run_fl_hfl(self, model_size, group_comm_round=1, local_update_config={}, start_time=0, stop_time=10000000):
