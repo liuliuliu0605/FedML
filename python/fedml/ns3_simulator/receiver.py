@@ -40,7 +40,6 @@ class Receiver(ns.network.Application):
                     del Receiver.address_key_dict[address_str]
                 del Receiver.comm_socket_dict[str(self.socket)]
             del Receiver.object_dict[str(self.socket)]
-
         # print(str(self.socket), Receiver.object_dict)
         # print(Receiver.comm_socket_dict)
         # print(Receiver.address_key_dict)

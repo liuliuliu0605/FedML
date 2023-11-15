@@ -120,6 +120,7 @@ class Sender(ns.network.Application):
         self.socket = socket
 
     def make_packet(self, size):
+
         packet = ns.network.Packet(int(size))
         return packet
 
