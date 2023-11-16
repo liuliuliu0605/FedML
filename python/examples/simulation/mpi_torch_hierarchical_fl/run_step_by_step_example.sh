@@ -2,6 +2,7 @@
 
 # run the following command:
 # ./run_step_by_step_example.sh 10 config/mnist_lr/fedml_config_topo.yaml
+# ./run_step_by_step_example.sh 10 config/cifar10_resnet56/fedml_config.yaml
 
 WORKER_NUM=$1
 CONFIG_PATH=$2

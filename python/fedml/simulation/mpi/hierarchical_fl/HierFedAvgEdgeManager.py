@@ -26,6 +26,7 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         if hasattr(self.args, 'enable_ns3') and self.args.enable_ns3:
             self.args.ns3_time = 0
         self.trigger_dynamic_group_comm = True if self.args.group_comm_round <= 0 else False
+        self.num_of_model_params = 0
 
     def run(self):
         super().run()
@@ -51,14 +52,19 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         self.group.setup_clients(total_client_indexes[edge_index])
         self.args.round_idx = 0
 
+        # get the number of model params
+        self.num_of_model_params = 0
+        for k in global_model_params:
+            self.num_of_model_params += global_model_params[k].numel()
+
         if group_comm_round is not None:
             self.args.group_comm_round = group_comm_round
 
         if self.args.enable_ns3:
             # time consumed in the current round
             time_consuming_one_round(
-                self.args, self.rank, self.comm, self.network, sampled_client_indexes, global_model_params,
-                topology_manager, list(range(1, self.size))
+                self.args, self.rank, self.comm, self.network, sampled_client_indexes,
+                self.num_of_model_params * 4, topology_manager, list(range(1, self.size))
             )
 
         is_estimate = False
@@ -92,8 +98,8 @@ class HierFedAVGEdgeManager(FedMLCommManager):
 
         if self.args.enable_ns3:
             time_consuming_one_round(
-                self.args, self.rank, self.comm, self.network, sampled_client_indexes, global_model_params,
-                topology_manager, list(range(1, self.size))
+                self.args, self.rank, self.comm, self.network, sampled_client_indexes,
+                self.num_of_model_params * 4, topology_manager, list(range(1, self.size))
             )
 
         is_estimate = False

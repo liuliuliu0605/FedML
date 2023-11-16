@@ -2,13 +2,14 @@
 
 GROUP_NUM=9
 GROUP_METHOD="hetero"
-COMM_ROUND=10000
-TIME_BUDGET=50
+COMM_ROUND=100000
+TIME_BUDGET=2000
 GROUP_COMM_ROUND=0
 TOPO_NAME="complete"
-CONFIG_PATH=config/mnist_lr/fedml_config_topo.yaml
+CONFIG_PATH=config/cifar10_resnet56/fedml_config.yaml
 
 group_alpha_list=(0.01 0.1 1.0)
+group_alpha_list=(1.0)
 
 WORKER_NUM=$(($GROUP_NUM+1))
 hostname > mpi_host_file

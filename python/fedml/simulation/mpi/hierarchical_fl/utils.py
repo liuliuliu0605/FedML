@@ -13,20 +13,14 @@ from ns import ns
 
 
 def time_consuming_one_round(
-        args, process_id, mpi_comm, network, sampled_client_indexes, global_model_params,
+        args, process_id, mpi_comm, network, sampled_client_indexes, model_size,
         topology_manager, system_id_list
 ):
     config_param = "{}-{}".format(args.group_comm_pattern, args.group_comm_round)
     if args.fast_mode and config_param in network.time_history:
-        print(str(process_id) * 20 + config_param)
         delay_matrix, region_delay, global_delay = network.get_history(config_param)
         args.ns3_time += delay_matrix.max()
     else:
-        print(str(process_id) * 40 + config_param)
-        num_of_model_params = 0
-        for k in global_model_params:
-            num_of_model_params += global_model_params[k].numel()
-
         network.connect_pses(topology_manager, enable_optimization=True)
 
         client_num_list = [len(sampled_client_indexes[i]) for i in range(args.group_num)]
@@ -38,16 +32,16 @@ def time_consuming_one_round(
 
         # run simulation
         if args.group_comm_pattern == 'decentralized':
-            delay_matrix, region_delay, global_delay = network.run_fl_pfl(model_size=num_of_model_params*4,
+            delay_matrix, region_delay, global_delay = network.run_fl_pfl(model_size=model_size,
                                                                           group_comm_round=args.group_comm_round,
                                                                           mix_comm_round=1,
                                                                           start_time=0, stop_time=10000000)
         elif args.group_comm_pattern == 'centralized':
-            delay_matrix, region_delay, global_delay = network.run_fl_hfl(model_size=num_of_model_params*4,
+            delay_matrix, region_delay, global_delay = network.run_fl_hfl(model_size=model_size,
                                                                           group_comm_round=args.group_comm_round,
                                                                           start_time=0, stop_time=10000000)
         elif args.group_comm_pattern == 'allreduce':
-            delay_matrix, region_delay, global_delay = network.run_fl_rar(model_size=num_of_model_params*4,
+            delay_matrix, region_delay, global_delay = network.run_fl_rar(model_size=model_size,
                                                                           group_comm_round=args.group_comm_round,
                                                                           start_time=0, stop_time=10000000)
         else:
@@ -68,7 +62,7 @@ def time_consuming_one_round(
             # network.plot_ps_overlay_topology(save_path="overlay.png")
 
 
-def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, N_tilde, zeta=1.0):
+def calculate_optimal_tau1(args, convergence_param_dict, time_dict, p, N_tilde, zeta=1.0):
     # {'sigma': 1.6627908909580238, 'L': 80.46860672820361, 'gamma': 4.5684504507218975, 'psi': 0.041040657805953944,
     #  'K': 7.530555555555556, 'loss': 2.31964097155026}
     loss_delta = convergence_param_dict['loss']
@@ -275,23 +269,67 @@ def post_complete_message_to_sweep_process(args):
     time.sleep(3)
 
 
+def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, N_tilde, zeta=1.0):
+    loss_delta = convergence_param_dict['loss']
+    L = convergence_param_dict['L']
+    sigma = convergence_param_dict['sigma']
+    gamma = convergence_param_dict['gamma']
+    psi = convergence_param_dict['psi']
+    K= convergence_param_dict['K']
+
+    agg_cost = time_dict['agg_cost']
+    mix_cost = time_dict['mix_cost']
+    U = time_dict['budget']
+
+    def h(tau):
+        a1 = 16 * L * loss_delta / sqrt(K) + 16 * sigma * zeta / sqrt(K) / sqrt(N_tilde)
+        a2 = 48 * (sigma * zeta + 18 * K * gamma * zeta)
+        a3 = 768 * sigma * zeta
+        a4 = 768 * 16 * K * psi * zeta
+
+        d_agg = agg_cost
+        d_mix = mix_cost
+
+        phi = (tau * d_agg + d_mix) / U / tau
+
+        A = a1 * sqrt(phi)
+        B = phi * (a2 + a3 * tau / p + a4 * tau**2 / p**2)
+        H = A + B
+
+        return H
+
+    opt_tau = 1
+    opt_value = sys.maxsize
+    for tau in range(1, 1001):
+        h_value = h(tau)
+        if h_value < opt_value:
+            opt_tau = tau
+            opt_value = h_value
+
+    if args.enable_wandb:
+        wandb.log({"Estimation/tau": opt_tau, "comm_round": args.round_idx})
+
+    return opt_tau
+
 if __name__ == '__main__':
 
     params = {'sigma': 19.19629517252362, 'L': 7225.820201343054, 'gamma': 34.19849039359468,
               'psi': 0.29461052466206183,
               'K': 7.417171717171717, 'loss': 4.122456542323485}
 
-    cifar_params = {'sigma': 1404, 'L': 2277, 'gamma': 684, 'psi': 9.976, 'K': 4.6, 'loss': 2.4, 'num_params': 600372}
+    cifar_params =  {'sigma': 1346.6006447640223, 'L': 2205.9963775601145, 'gamma': 705.6212093459262,
+                     'psi': 8.30353176121967, 'K': 4.61919191919192, 'loss': 2.4087824613888023,
+                     'local_update_time': 0.07494886665461212, 'num_params': 600372}
     p = 1.0
     N_tilde = 1000
     convergence_param_dict = cifar_params
     zeta = 1/convergence_param_dict['num_params'] #1e-10 * p**2
-    zeta = 1/60 #1e-10 * p**2
+    # zeta = 1 #1e-10 * p**2
 
     time_dict = {
-        'agg_cost': 1.34,
-        'mix_cost': 2.76,
-        'budget': 5000
+        'agg_cost': 1.2,
+        'mix_cost': 0.99,
+        'budget': 2000
     }
 
     class ARGS:

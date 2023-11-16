@@ -49,6 +49,8 @@ class HierFedAVGCloudManager(FedMLCommManager):
             self.args.ns3_time = 0
         self.trigger_dynamic_group_comm = True if self.args.group_comm_round <= 0 else False
         self.args.group_comm_round = 1 if self.args.group_comm_round <= 0 else self.args.group_comm_round
+        self.num_of_model_params = 0
+
         # self.is_preprocessed = is_preprocessed
         # self.preprocessed_client_lists = preprocessed_client_lists
 
@@ -58,6 +60,11 @@ class HierFedAVGCloudManager(FedMLCommManager):
     def send_init_msg(self):
         # broadcast to edge servers
         global_model_params = self.aggregator.get_global_model_params()
+
+        # get the number of model params
+        self.num_of_model_params = 0
+        for k in global_model_params:
+            self.num_of_model_params += global_model_params[k].numel()
 
         sampled_group_to_client_indexes = {}
         total_sampled_data_size = 0
@@ -92,8 +99,8 @@ class HierFedAVGCloudManager(FedMLCommManager):
         if self.args.enable_ns3:
             # time consumed int the coming round
             time_consuming_one_round(
-                self.args, self.rank, self.comm, self.network, sampled_group_to_client_indexes, global_model_params,
-                self.topology_manager, list(range(1, self.size))
+                self.args, self.rank, self.comm, self.network, sampled_group_to_client_indexes,
+                self.num_of_model_params * 4, self.topology_manager, list(range(1, self.size))
             )
 
     def register_message_receive_handlers(self):
@@ -146,7 +153,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
                 # calculate optimal tau
                 next_group_comm_round = calculate_optimal_tau(self.args,
                                                               self.convergence_param_dict,
-                                                              time_dict, p, N_tilde, zeta=1.0)
+                                                              time_dict, p, N_tilde, zeta=1/self.num_of_model_params)
                 self.args.group_comm_round = next_group_comm_round
 
             # start the next round
@@ -193,8 +200,8 @@ class HierFedAVGCloudManager(FedMLCommManager):
             if self.args.enable_ns3:
                 # time consumed int the coming round
                 time_consuming_one_round(
-                    self.args, self.rank, self.comm, self.network, sampled_group_to_client_indexes, global_model_params,
-                    self.topology_manager, list(range(1, self.size))
+                    self.args, self.rank, self.comm, self.network, sampled_group_to_client_indexes,
+                    self.num_of_model_params * 4, self.topology_manager, list(range(1, self.size))
                 )
 
     def send_message_init_config(self, receive_id, global_model_params, total_client_indexes,
