@@ -3,7 +3,7 @@ import argparse
 parser = argparse.ArgumentParser(prog='ns3 simulator')
 
 parser.add_argument('--pattern', type=str, default='pfl', help='communication pattern bettween pses')
-parser.add_argument('--model_size', type=int, default=600372*4, help='The size of model parameters (Bytes)')
+parser.add_argument('--model_size', type=int, default=10000, help='The size of model parameters (Bytes)')
 parser.add_argument('--ps_num', type=int, default=9, help='The number of parameter servers')
 parser.add_argument('--client_num', type=int, default=10, help='The number of clients in each ps')
 parser.add_argument('--topo_name', type=str, default='complete', help='The topology formed by pses')

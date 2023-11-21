@@ -222,6 +222,7 @@ def setup_ns3_simulator(
 
     network.read_underlay_graph(underlay_name=args.underlay)
     network.select_edge_pses(ps_num=args.group_num, method='mhrw')
+    network.set_local_update_config(low=args.local_update_time*0.5, high=args.local_update_time*1.5)
 
     if args.group_comm_pattern == 'centralized':
         network.select_cloud_ps(method='centroid')

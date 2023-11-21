@@ -62,6 +62,7 @@ class Network:
 
         self.system_id_map = {}
         self.time_history = {}
+        self.local_update_config = {}
         np.random.seed(seed)
 
     def __del__(self):
@@ -588,13 +589,16 @@ class Network:
 
         return edge_communicator_list, cloud_comm
 
-    def set_fl_step(self, model_size, start_time=0, stop_time=10000000, phases=1, initial_message='0',
-                    local_update_config={}):
+    def set_local_update_config(self, low, high):
+        self.local_update_config['low'] = low
+        self.local_update_config['high'] = high
+
+    def set_fl_step(self, model_size, start_time=0, stop_time=10000000, phases=1, initial_message='0'):
 
         def client_receive_model(agg_comm):
             delay = np.random.uniform(
-                local_update_config.get('low', 0),
-                local_update_config.get('high', 0),
+                self.local_update_config.get('low', 0),
+                self.local_update_config.get('high', 0),
                 1
             ).sum()
             agg_comm.generate_message('hello', delay=delay)
@@ -697,10 +701,8 @@ class Network:
     def get_history(self, config_param):
         return self.time_history[config_param][-1]
 
-    def run_fl_pfl(self, model_size, group_comm_round=1, mix_comm_round=1, local_update_config={},
-                   start_time=0, stop_time=10000000):
+    def run_fl_pfl(self, model_size, group_comm_round=1, mix_comm_round=1, start_time=0, stop_time=10000000):
         ps_client_distribution_list, client_ps_aggregation_list = self.set_fl_step(model_size,
-                                                                                   local_update_config=local_update_config,
                                                                                    start_time=start_time,
                                                                                    stop_time=stop_time,
                                                                                    phases=group_comm_round)
@@ -733,9 +735,8 @@ class Network:
 
         return ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay
 
-    def run_fl_hfl(self, model_size, group_comm_round=1, local_update_config={}, start_time=0, stop_time=10000000):
+    def run_fl_hfl(self, model_size, group_comm_round=1, start_time=0, stop_time=10000000):
         ps_client_distribution_list, client_ps_aggregation_list = self.set_fl_step(model_size,
-                                                                                   local_update_config=local_update_config,
                                                                                    start_time=start_time,
                                                                                    stop_time=stop_time,
                                                                                    phases=group_comm_round)
@@ -769,9 +770,8 @@ class Network:
             [ps_ps_delay_matrix[:, i+1].max() - ps_partial_agg_delay[i] for i in range(self.edge_ps_num)])
         return ps_ps_delay_matrix, ps_partial_agg_delay, ps_global_agg_delay
 
-    def run_fl_rar(self, model_size, group_comm_round=1, local_update_config={}, start_time=0, stop_time=10000000):
+    def run_fl_rar(self, model_size, group_comm_round=1, start_time=0, stop_time=10000000):
         ps_client_distribution_list, client_ps_aggregation_list = self.set_fl_step(model_size,
-                                                                                   local_update_config=local_update_config,
                                                                                    start_time=start_time,
                                                                                    stop_time=stop_time,
                                                                                    phases=group_comm_round)

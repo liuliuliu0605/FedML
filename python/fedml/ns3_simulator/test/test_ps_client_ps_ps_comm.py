@@ -30,10 +30,6 @@ client_num_list = [client_num for i in range(ps_num)]
 underlay = args.underlay
 access_link_capacity = int(args.access_link_capacity)
 core_link_capacity = int(args.core_link_capacity)
-local_update_config = {
-    'low': 0,
-    'high': 0
-}
 
 # initialize network
 network = Network(access_link_capacity=access_link_capacity,
@@ -42,6 +38,7 @@ network = Network(access_link_capacity=access_link_capacity,
                   verbose=verbose,
                   mpi_comm=py_comm,
                   seed=seed)
+network.set_local_update_config(low=0, high=0)
 topology_manager = SymmetricTopologyManager(ps_num)
 topology_manager.generate_custom_topology(args)
 
@@ -72,17 +69,14 @@ for _ in range(1):
         ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay = network.run_fl_pfl(model_size=model_size,
                                                                             group_comm_round=group_comm_round,
                                                                             mix_comm_round=mix_comm_round,
-                                                                            local_update_config=local_update_config,
                                                                             start_time=0, stop_time=10000000)
     elif pattern == 'hfl':
         ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay = network.run_fl_hfl(model_size=model_size,
                                                                             group_comm_round=group_comm_round,
-                                                                            local_update_config=local_update_config,
                                                                             start_time=0, stop_time=10000000)
     elif pattern == 'rar':
         ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay = network.run_fl_rar(model_size=model_size,
                                                                             group_comm_round=group_comm_round,
-                                                                            local_update_config=local_update_config,
                                                                             start_time=0, stop_time=10000000)
     t_b = time.time()
 

@@ -84,21 +84,15 @@ class HFLClient(Client):
 
         optimizer.step()
 
+        # calculate the variance of stochastic gradients
         grad2 = {}
         grad_square = 0
-        local_update_time = 0
-        # calculate the variance of stochastic gradients
         for x, labels in self.local_training_data:
-
-            start_time = time.time()
             x, labels = x.to(self.device), labels.to(self.device)
             self.model.zero_grad()
             log_probs = self.model(x)
             loss = self.criterion(log_probs, labels) * scaled_loss_factor
             loss.backward()
-            end_time = time.time()
-            time_consumed = end_time - start_time
-            local_update_time += time_consumed
 
             for name, param in self.model.named_parameters():
                 grad_square += (param.grad ** 2).sum().item() / batch_num
@@ -113,12 +107,45 @@ class HFLClient(Client):
             sigma -= (grad2[name]**2).sum().item()
             grad_delta += ((grad[name] - grad2[name])**2).sum().item()
             model_delta += ((w[name] - param.detach().cpu().numpy())**2).sum().item()
+        L = grad_delta / model_delta
+
+        # calculate zeta
+        cum_grad_delta = {}
+        cum_grad_delta_square = 0
+        num_of_local_updates = 0
+        local_update_time = 0
+        for epoch in range(self.args.epochs):
+            for x, labels in self.local_training_data:
+                start_time = time.time()
+                x, labels = x.to(self.device), labels.to(self.device)
+                self.model.zero_grad()
+                log_probs = self.model(x)
+                loss = self.criterion(log_probs, labels)  # pylint: disable=E1102
+                loss.backward()
+                end_time = time.time()
+                time_consumed = end_time - start_time
+                local_update_time += time_consumed
+
+                for name, param in self.model.named_parameters():
+                    delta_grad = grad[name] - param.grad.cpu().numpy()
+                    cum_grad_delta_square += (delta_grad**2).sum().item()
+                    if name not in cum_grad_delta:
+                        cum_grad_delta[name] = copy.deepcopy(delta_grad)
+                    else:
+                        cum_grad_delta[name] += delta_grad
+
+                optimizer.step()
+
+                num_of_local_updates += 1
+        cum_grad_delta_square *= num_of_local_updates
 
         return {
             'sigma': max(sigma, 0),
-            'L': grad_delta / model_delta,
+            'L': L,
             'grad': grad,
-            'K': batch_num,
+            'K': num_of_local_updates,
             'loss': loss_value,
             'local_update_time': local_update_time,
+            'cum_grad_delta': cum_grad_delta,
+            'cum_grad_delta_square': cum_grad_delta_square
         }

@@ -4,12 +4,15 @@ GROUP_NUM=9
 GROUP_METHOD="hetero"
 COMM_ROUND=100000
 TIME_BUDGET=2000
-GROUP_COMM_ROUND=0
 TOPO_NAME="complete"
 CONFIG_PATH=config/cifar10_resnet56/fedml_config.yaml
 
+group_comm_round_list=(1 5 10 50 100 200)
 group_alpha_list=(0.01 0.1 1.0)
-group_alpha_list=(1.0)
+
+# test
+group_comm_round_list=(1 5 10 50 100 0)
+group_alpha_list=(0.01)
 
 WORKER_NUM=$(($GROUP_NUM+1))
 hostname > mpi_host_file
@@ -22,7 +25,6 @@ yq -i ".device_args.gpu_mapping_key = \"mapping_config1_${WORKER_NUM}\"" $CONFIG
 yq -i ".train_args.group_num = ${GROUP_NUM}" $CONFIG_PATH
 yq -i ".train_args.comm_round = ${COMM_ROUND}" $CONFIG_PATH
 yq -i ".train_args.time_budget = ${TIME_BUDGET}" $CONFIG_PATH
-yq -i ".train_args.group_comm_round = ${GROUP_COMM_ROUND}" $CONFIG_PATH
 yq -i ".train_args.group_method = \"${GROUP_METHOD}\"" $CONFIG_PATH
 yq -i ".train_args.topo_name = \"${TOPO_NAME}\"" $CONFIG_PATH
 
@@ -33,17 +35,23 @@ fi
 if [ "${TOPO_NAME}" != "random" ]; then
   yq -i ".train_args.topo_edge_probability = 1.0" $CONFIG_PATH
 fi
-
-for group_alpha in ${group_alpha_list[@]};
+for group_comm_round in ${group_comm_round_list[@]};
 do
-  echo "group_alpha=$group_alpha"
-  yq -i ".train_args.group_alpha = ${group_alpha}" $CONFIG_PATH
+  echo "group_comm_round=$group_comm_round"
+  yq -i ".train_args.group_comm_round = ${group_comm_round}" $CONFIG_PATH
 
-  nohup mpirun -np $WORKER_NUM \
-  -hostfile mpi_host_file \
-  python torch_step_by_step_example.py --cf $CONFIG_PATH \
-  > batch_log/"group_comm_round=$GROUP_COMM_ROUND-topo=$TOPO_NAME-group_alpha=$group_alpha.log"  2>&1 & echo $! >> batch_log/process.pid
-  sleep 30
+  for group_alpha in ${group_alpha_list[@]};
+  do
+    echo "group_alpha=$group_alpha"
+    yq -i ".train_args.group_alpha = ${group_alpha}" $CONFIG_PATH
+
+    nohup mpirun -np $WORKER_NUM \
+    -hostfile mpi_host_file \
+    python torch_step_by_step_example.py --cf $CONFIG_PATH \
+    > batch_log/"group_comm_round=$group_comm_round-topo=$TOPO_NAME-group_alpha=$group_alpha.log"  2>&1 & echo $! >> batch_log/process.pid
+    sleep 30
+  done
+
 done
 
 echo "Finished!"

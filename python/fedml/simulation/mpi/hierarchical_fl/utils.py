@@ -18,9 +18,11 @@ def time_consuming_one_round(
 ):
     config_param = "{}-{}".format(args.group_comm_pattern, args.group_comm_round)
     if args.fast_mode and config_param in network.time_history:
+        logging.info("Rank {} runs in fast mode".format(process_id))
         delay_matrix, region_delay, global_delay = network.get_history(config_param)
         args.ns3_time += delay_matrix.max()
     else:
+        logging.info("Rank {} is running ns3 simulator".format(process_id))
         network.connect_pses(topology_manager, enable_optimization=True)
 
         client_num_list = [len(sampled_client_indexes[i]) for i in range(args.group_num)]
@@ -127,17 +129,36 @@ def agg_parameter_estimation(args, param_estimation_dict, var_name, log_wandb=Fa
                 var -= (agg_param_estimation[name] ** 2).sum()
 
             agg_param_estimation_dict[var_name] = var
-            if var_name == 'gamma':
-                agg_param_estimation_dict['grad'] = agg_param_estimation
+            # if var_name == 'gamma':
+            agg_param_estimation_dict['grad'] = agg_param_estimation
+        elif k == 'cum_grad_delta':
+            agg_param_estimation = {}
+            for name in param_estimation_dict[0][k]:
+                for i in range(size):
+                    layer_grad = param_estimation_dict[i][k][name]
+                    if k not in agg_param_estimation:
+                        agg_param_estimation[name] = layer_grad / size
+                    else:
+                        agg_param_estimation[name] += layer_grad / size
 
+            agg_param_estimation_dict['cum_grad_delta'] = agg_param_estimation
         else:
             agg_param_estimation_dict[k] = sum(
                 [param_estimation_dict[idx][k] for idx in range(size)]
             ) / size
 
+    if var_name == 'psi':
+        cum_grad_delta_square = agg_param_estimation_dict['cum_grad_delta_square']
+        cum_grad_delta_square2 = 0
+        for name in agg_param_estimation_dict['cum_grad_delta']:
+            cum_grad_delta_square2 += (agg_param_estimation_dict['cum_grad_delta'][name]**2).sum().item()
+        zeta = cum_grad_delta_square2 / cum_grad_delta_square
+        agg_param_estimation_dict['zeta'] = zeta
+
     if log_wandb:
         for key in agg_param_estimation_dict:
-            wandb.log({"Estimation/%s" % key: agg_param_estimation_dict[key], "comm_round": args.round_idx})
+            if key not in ['cum_grad_delta', 'grad']:
+                wandb.log({"Estimation/%s" % key: agg_param_estimation_dict[key], "comm_round": args.round_idx})
     return agg_param_estimation_dict
 
 
@@ -269,13 +290,14 @@ def post_complete_message_to_sweep_process(args):
     time.sleep(3)
 
 
-def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, N_tilde, zeta=1.0):
+def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, N_tilde):
     loss_delta = convergence_param_dict['loss']
     L = convergence_param_dict['L']
     sigma = convergence_param_dict['sigma']
     gamma = convergence_param_dict['gamma']
     psi = convergence_param_dict['psi']
-    K= convergence_param_dict['K']
+    K = convergence_param_dict['K']
+    zeta = convergence_param_dict['zeta']
 
     agg_cost = time_dict['agg_cost']
     mix_cost = time_dict['mix_cost']
@@ -311,19 +333,20 @@ def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, N_tilde, z
 
     return opt_tau
 
+
 if __name__ == '__main__':
 
-    params = {'sigma': 19.19629517252362, 'L': 7225.820201343054, 'gamma': 34.19849039359468,
-              'psi': 0.29461052466206183,
-              'K': 7.417171717171717, 'loss': 4.122456542323485}
+    fmnist_params = {'sigma': 1.7, 'L': 72.897, 'gamma': 4.713,
+              'psi': 0.06666, 'K': 6.471, 'loss': 2.32, 'zeta': 4.5e-7}
 
     cifar_params =  {'sigma': 1346.6006447640223, 'L': 2205.9963775601145, 'gamma': 705.6212093459262,
                      'psi': 8.30353176121967, 'K': 4.61919191919192, 'loss': 2.4087824613888023,
                      'local_update_time': 0.07494886665461212, 'num_params': 600372}
-    p = 1.0
+    p = 0.2
     N_tilde = 1000
-    convergence_param_dict = cifar_params
-    zeta = 1/convergence_param_dict['num_params'] #1e-10 * p**2
+    convergence_param_dict = fmnist_params
+    # zeta = 1/convergence_param_dict['num_params'] #1e-10 * p**2
+    zeta = convergence_param_dict['zeta']
     # zeta = 1 #1e-10 * p**2
 
     time_dict = {
@@ -335,5 +358,5 @@ if __name__ == '__main__':
     class ARGS:
         enable_wandb = False
 
-    opt_tau = calculate_optimal_tau(ARGS(), convergence_param_dict, time_dict, p, N_tilde, zeta)
+    opt_tau = calculate_optimal_tau(ARGS(), convergence_param_dict, time_dict, p, N_tilde)
     print(opt_tau)

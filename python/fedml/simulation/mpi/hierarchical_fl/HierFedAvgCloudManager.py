@@ -144,7 +144,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
                 data = self.network.get_history(config_param)
 
                 time_dict = {
-                    "agg_cost": data[1].mean()/self.args.group_comm_round,
+                    "agg_cost": data[1].mean() / self.args.group_comm_round,
                     "mix_cost": data[2].mean(),
                     "budget": self.args.time_budget
                 }
@@ -153,7 +153,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
                 # calculate optimal tau
                 next_group_comm_round = calculate_optimal_tau(self.args,
                                                               self.convergence_param_dict,
-                                                              time_dict, p, N_tilde, zeta=1/self.num_of_model_params)
+                                                              time_dict, p, N_tilde)
                 self.args.group_comm_round = next_group_comm_round
 
             # start the next round
