@@ -23,7 +23,7 @@ train_args:
   group_method: "hetero"
   group_alpha: 0.01
   group_num: 9
-  group_comm_round: 0
+  group_comm_round: 50
   group_comm_pattern: "decentralized"
   topo_name: "complete"
   topo_edge_probability: 1.0

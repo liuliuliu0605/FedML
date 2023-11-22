@@ -23,14 +23,12 @@ cd ns-allinone-3.40/ns-3.40
 https://www.nsnam.org/docs/release/3.35/tutorial/ns-3-tutorial.pdf
 
 # ns3 env
->>>>>>> 48a705599a9b85734f1609e62e7982ecf9554334
 ```shell
-export NS3_HOME=/home/ubuntu/Software/ns-3-dev
+export NS3_HOME=/home/ubuntu/Software/ns-allinone-3.40/ns-3.40
 export PYTHONPATH=$PYTHONPATH:$NS3_HOME/build/bindings/python
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$NS3_HOME/build/lib
 ```
 
-<<<<<<< HEAD
 # Test
 ```shell
 ./test.py

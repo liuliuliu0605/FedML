@@ -11,7 +11,7 @@ group_comm_round_list=(1 5 10 50 100 200)
 group_alpha_list=(0.01 0.1 1.0)
 
 # test
-group_comm_round_list=(1 5 10 50 100 0)
+group_comm_round_list=(50 100)
 group_alpha_list=(0.01)
 
 WORKER_NUM=$(($GROUP_NUM+1))
@@ -49,7 +49,7 @@ do
     -hostfile mpi_host_file \
     python torch_step_by_step_example.py --cf $CONFIG_PATH \
     > batch_log/"group_comm_round=$group_comm_round-topo=$TOPO_NAME-group_alpha=$group_alpha.log"  2>&1 & echo $! >> batch_log/process.pid
-    sleep 30
+    sleep 14400
   done
 
 done

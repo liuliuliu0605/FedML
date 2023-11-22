@@ -257,7 +257,7 @@ class HierFedAVGCloudAggregator(object):
 
             self.args.round_idx = round_idx
 
-            if self.args.enable_ns3:
+            if self.args.enable_wandb and self.args.enable_ns3:
                 wandb.log({"Test/Acc": metric_result_in_current_round[0], "time": self.args.ns3_time})
                 wandb.log({"Test/Loss": metric_result_in_current_round[1], "time": self.args.ns3_time})
 
