@@ -5,13 +5,15 @@ GROUP_METHOD="hetero"
 COMM_ROUND=100000
 TIME_BUDGET=2000
 TOPO_NAME="complete"
+GROUP_COMM_PATTERN="centralized"
 CONFIG_PATH=config/cifar10_resnet56/fedml_config.yaml
 
-group_comm_round_list=(1 5 10 50 100 200)
+group_comm_round_list=(1 5 10 50 100) # decentralized
+group_comm_round_list=(1 4 10) # centralized
 group_alpha_list=(0.01 0.1 1.0)
 
 # test
-group_comm_round_list=(50 100)
+group_comm_round_list=(1 4 10)
 group_alpha_list=(0.01)
 
 WORKER_NUM=$(($GROUP_NUM+1))
@@ -27,6 +29,7 @@ yq -i ".train_args.comm_round = ${COMM_ROUND}" $CONFIG_PATH
 yq -i ".train_args.time_budget = ${TIME_BUDGET}" $CONFIG_PATH
 yq -i ".train_args.group_method = \"${GROUP_METHOD}\"" $CONFIG_PATH
 yq -i ".train_args.topo_name = \"${TOPO_NAME}\"" $CONFIG_PATH
+yq -i ".train_args.group_comm_pattern = \"${GROUP_COMM_PATTERN}\"" $CONFIG_PATH
 
 if [ "${GROUP_METHOD}" = "random" ]; then
   yq -i ".train_args.group_alpha = 0" $CONFIG_PATH
@@ -48,8 +51,9 @@ do
     nohup mpirun -np $WORKER_NUM \
     -hostfile mpi_host_file \
     python torch_step_by_step_example.py --cf $CONFIG_PATH \
-    > batch_log/"group_comm_round=$group_comm_round-topo=$TOPO_NAME-group_alpha=$group_alpha.log"  2>&1 & echo $! >> batch_log/process.pid
-    sleep 14400
+    > batch_log/"group_comm_pattern=$GROUP_COMM_PATTERN-group_comm_round=$group_comm_round-topo=$TOPO_NAME-group_alpha=$group_alpha.log" 2>&1 \
+    & echo $! >> batch_log/process.pid
+    sleep 3600
   done
 
 done
