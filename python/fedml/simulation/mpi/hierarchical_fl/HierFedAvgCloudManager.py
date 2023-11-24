@@ -44,12 +44,25 @@ class HierFedAVGCloudManager(FedMLCommManager):
             self.group_to_client_num_per_round[remain_client_num_list_per_round - 1] += 1
             remain_client_num_list_per_round -= 1
 
-        self.convergence_param_dict = {}
         if hasattr(self.args, 'enable_ns3') and self.args.enable_ns3:
             self.args.ns3_time = 0
         self.trigger_dynamic_group_comm = True if self.args.group_comm_round <= 0 else False
         self.args.group_comm_round = 1 if self.args.group_comm_round <= 0 else self.args.group_comm_round
         self.num_of_model_params = 0
+
+
+        N_tilde, n_tilde = 0, 0
+        for i in range(args.group_num):
+            N_tilde += 1/len(self.group_to_client_indexes[i])/args.group_num**2
+            n_tilde += 1/self.group_to_client_num_per_round[i]/args.group_num**2
+
+        self.convergence_param_dict = {
+            'N_tilde': 1 / sum([1/len(self.group_to_client_indexes[i])/args.group_num**2 for i in range(args.group_num)]),
+            'n_tilde': 1 / sum([1/self.group_to_client_num_per_round[i]/args.group_num**2 for i in range(args.group_num)]),
+            'N': total_clients,
+            'n': args.client_num_per_round,
+            'avgN_minN': total_clients/args.group_num/min([len(self.group_to_client_indexes[i]) for i in range(args.group_num)])
+        }
 
         # self.is_preprocessed = is_preprocessed
         # self.preprocessed_client_lists = preprocessed_client_lists
@@ -133,7 +146,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
                     self.args.round_idx == 0 and self.trigger_dynamic_group_comm
                     or self.args.enable_parameter_estimation
             ):
-                self.convergence_param_dict = self.aggregator.aggregate_estimated_params()
+                self.convergence_param_dict.update(self.aggregator.aggregate_estimated_params())
 
             if self.trigger_dynamic_group_comm:
                 assert self.args.enable_ns3 is True
@@ -147,12 +160,11 @@ class HierFedAVGCloudManager(FedMLCommManager):
                     "mix_cost": data[2].mean(),
                     "budget": self.args.time_budget
                 }
-                N_tilde = self.args.client_num_in_total  # TODO
 
                 # calculate optimal tau
                 next_group_comm_round = calculate_optimal_tau(self.args,
                                                               self.convergence_param_dict,
-                                                              time_dict, p, N_tilde)
+                                                              time_dict, p)
                 self.args.group_comm_round = next_group_comm_round
 
             # start the next round

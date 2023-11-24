@@ -65,7 +65,7 @@ def time_consuming_one_round(
             # network.plot_ps_overlay_topology(save_path="overlay.png")
 
 
-def calculate_optimal_tau1(args, convergence_param_dict, time_dict, p, N_tilde, zeta=1.0):
+def calculate_optimal_tau1(args, convergence_param_dict, time_dict, p, zeta=1.0):
     # {'sigma': 1.6627908909580238, 'L': 80.46860672820361, 'gamma': 4.5684504507218975, 'psi': 0.041040657805953944,
     #  'K': 7.530555555555556, 'loss': 2.31964097155026}
     loss_delta = convergence_param_dict['loss']
@@ -74,10 +74,15 @@ def calculate_optimal_tau1(args, convergence_param_dict, time_dict, p, N_tilde, 
     gamma = convergence_param_dict['gamma']
     psi = convergence_param_dict['psi']
     K= convergence_param_dict['K']
+    N = convergence_param_dict['N']
+    N_tilde = convergence_param_dict['N_tilde']
+    n = convergence_param_dict['n']
+    n_tilde = convergence_param_dict['n_tilde']
 
     agg_cost = time_dict['agg_cost']
     mix_cost = time_dict['mix_cost']
     U = time_dict['budget']
+
 
     def h(tau):
         a1 = L * loss_delta / sqrt(K) + sigma * zeta / sqrt(K) / sqrt(N_tilde)
@@ -291,7 +296,7 @@ def post_complete_message_to_sweep_process(args):
     time.sleep(3)
 
 
-def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, N_tilde):
+def calculate_optimal_tau(args, convergence_param_dict, time_dict, p):
     loss_delta = convergence_param_dict['loss']
     L = convergence_param_dict['L']
     sigma = convergence_param_dict['sigma']
@@ -299,16 +304,24 @@ def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, N_tilde):
     psi = convergence_param_dict['psi']
     K = convergence_param_dict['K']
     zeta = convergence_param_dict['zeta']
+    N = convergence_param_dict['N']
+    N_tilde = convergence_param_dict['N_tilde']
+    n = convergence_param_dict['n']
+    n_tilde = convergence_param_dict['n_tilde']
+    avgN_minN = convergence_param_dict['avgN_minN']
 
     agg_cost = time_dict['agg_cost']
     mix_cost = time_dict['mix_cost']
     U = time_dict['budget']
 
     def h(tau):
-        a1 = 16 * L * loss_delta / sqrt(K) + 16 * sigma * zeta / sqrt(K) / sqrt(N_tilde)
-        a2 = 48 * (sigma * zeta + 18 * K * gamma * zeta)
-        a3 = 768 * sigma * zeta
-        a4 = 768 * 16 * K * psi * zeta
+        a1 = 16 * L * loss_delta / sqrt(K*n_tilde) \
+             + 8 * sigma * zeta / sqrt(K*n_tilde) \
+             + 24 * L * N * (N-n) * sqrt(n_tilde) * (sigma + 18 * K *gamma) / (N-1) /n / sqrt(K) * zeta \
+             + avgN_minN * 432 * sqrt(K) * (N - n) * sqrt(n_tilde) * psi / (N-1) / n * zeta
+        a2 = 24 * n_tilde* (sigma + 18 * K * gamma) * zeta
+        a3 = 768 * n_tilde * sigma * zeta
+        a4 = 768 * 16 * n_tilde * K * psi * zeta
 
         d_agg = agg_cost
         d_mix = mix_cost
