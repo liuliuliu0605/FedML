@@ -59,6 +59,7 @@ def time_consuming_one_round(
         if process_id == 0 and args.enable_wandb:
             wandb.log({"Estimation/ps_client_time": region_delay.mean(), "comm_round": args.round_idx})
             wandb.log({"Estimation/ps_ps_time": global_delay.mean(), "comm_round": args.round_idx})
+            wandb.log({"Estimation/model_size": model_size, "comm_round": args.round_idx})
 
             # TODO: save in wandb
             # network.plot_ps_overlay_topology(save_path="overlay.png")

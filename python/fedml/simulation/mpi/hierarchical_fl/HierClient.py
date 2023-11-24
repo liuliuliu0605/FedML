@@ -28,7 +28,7 @@ class HFLClient(Client):
         self.model.load_state_dict(w)
         self.model.to(self.device)
 
-        scaled_loss_factor = min(scaled_loss_factor, 1.0)
+        # scaled_loss_factor = min(scaled_loss_factor, 1.0)
         if self.args.client_optimizer == "sgd":
             optimizer = torch.optim.SGD(self.model.parameters(), lr=self.args.learning_rate * scaled_loss_factor)
         else:

@@ -86,7 +86,6 @@ class HierFedAVGCloudManager(FedMLCommManager):
         )
 
         for process_id in range(1, self.size):
-            total_sampled_data_size = 0 if self.topology_manager is None else total_sampled_data_size
             self.send_message_init_config(
                 process_id,
                 global_model_params,
@@ -184,9 +183,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
             )
 
             for receiver_id in range(1, self.size):
-                if self.args.group_comm_pattern in ['centralized', 'allreduce']:
-                    total_sampled_data_size = 0
-                else:
+                if self.args.group_comm_pattern in ['decentralized']:
                     global_model_params = global_model_params_list[receiver_id - 1]
 
                 self.send_message_sync_model_to_edge(

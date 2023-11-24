@@ -132,7 +132,7 @@ class HierFedAVGCloudAggregator(object):
                                                               topology_manager.get_in_neighbor_weights(idx))
                                         )
             # average for testing
-            averaged_params = self._pfedavg_aggregation_(edge_model_list)
+            averaged_params = self._fedavg_aggregation_(edge_model_list)
             self.set_global_model_params(averaged_params)
             self.test_on_cloud_for_all_clients(global_round_idx)
 
@@ -141,25 +141,6 @@ class HierFedAVGCloudAggregator(object):
         return [edge_model for _, edge_model in edge_model_list]
 
     def _fedavg_aggregation_(self, model_list):
-        training_num = 0
-        for i in range(0, len(model_list)):
-            local_sample_number, local_model_params = model_list[i]
-            training_num += local_sample_number
-        (num0, averaged_params) = model_list[0]
-        for k in averaged_params.keys():
-            for i in range(0, len(model_list)):
-                local_sample_number, local_model_params = model_list[i]
-                if i == 0:
-                    averaged_params[k] = (
-                        local_model_params[k] * local_sample_number / training_num
-                    )
-                else:
-                    averaged_params[k] += (
-                        local_model_params[k] * local_sample_number / training_num
-                    )
-        return averaged_params
-
-    def _pfedavg_aggregation_(self, model_list):
         (num0, averaged_params) = model_list[0]
         for k in averaged_params.keys():
             for i in range(0, len(model_list)):

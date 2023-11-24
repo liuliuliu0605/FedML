@@ -79,7 +79,7 @@ class HierGroup(FedAvgAPI):
                 w_locals.append((client.get_sample_number(), w_local))
 
             # aggregate local weights
-            w_group_list.append((global_round_idx, self._aggregate(w_locals)))
+            w_group_list.append((global_round_idx, self._aggregate_noniid_avg(w_locals)))
             sample_num_list.append(self.get_sample_number(sampled_client_indexes))
 
             # update the group weight
