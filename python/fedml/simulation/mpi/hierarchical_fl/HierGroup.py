@@ -55,6 +55,7 @@ class HierGroup(FedAvgAPI):
             param_estimation_dict = {}
 
         sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes]
+        group_sampled_data_size = sum([client.local_sample_number for client in sampled_client_list])
         w_group = w
         w_group_list = []
         sample_num_list = []
@@ -69,9 +70,12 @@ class HierGroup(FedAvgAPI):
             # train each client
             for client in sampled_client_list:
                 if total_sampled_data_size > 0:
+                    # scaled_loss_factor = (
+                    #         self.args.group_num * len(sampled_client_list)
+                    #         * client.local_sample_number / total_sampled_data_size
+                    # )
                     scaled_loss_factor = (
-                            self.args.group_num * len(sampled_client_list)
-                            * client.local_sample_number / total_sampled_data_size
+                            self.args.group_num * group_sampled_data_size / total_sampled_data_size
                     )
                     w_local = client.train(w_group, scaled_loss_factor)
                 else:
@@ -79,7 +83,8 @@ class HierGroup(FedAvgAPI):
                 w_locals.append((client.get_sample_number(), w_local))
 
             # aggregate local weights
-            w_group_list.append((global_round_idx, self._aggregate_noniid_avg(w_locals)))
+            # w_group_list.append((global_round_idx, self._aggregate_noniid_avg(w_locals)))
+            w_group_list.append((global_round_idx, self._aggregate(w_locals)))
             sample_num_list.append(self.get_sample_number(sampled_client_indexes))
 
             # update the group weight
