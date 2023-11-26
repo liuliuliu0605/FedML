@@ -13,7 +13,7 @@ def get_2d_torus_overlay(node_num):
     for i in range(side_len):
         for j in range(side_len):
             idx = i * side_len + j
-            torus[i, i] = 1 / 5
+            torus[idx, idx] = 1 / 5
             torus[idx, (((i + 1) % side_len) * side_len + j)] = 1 / 5
             torus[idx, (((i - 1) % side_len) * side_len + j)] = 1 / 5
             torus[idx, (i * side_len + (j + 1) % side_len)] = 1 / 5
