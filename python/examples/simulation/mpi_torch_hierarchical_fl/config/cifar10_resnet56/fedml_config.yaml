@@ -14,7 +14,7 @@ train_args:
   client_num_in_total: 1000
   client_num_per_round: 90
   comm_round: 100000
-  time_budget: 2000
+  time_budget: 4000
   epochs: 1
   batch_size: 10
   client_optimizer: sgd
@@ -23,16 +23,16 @@ train_args:
   group_method: "hetero"
   group_alpha: 0.01
   group_num: 9
-  group_comm_round: 50
+  group_comm_round: 5
   group_comm_pattern: "decentralized"
-  topo_name: "complete"
+  topo_name: "ring"
   topo_edge_probability: 1.0
 ns3_args:
   enable_parameter_estimation: False
   enable_ns3: True
   fast_mode: True
   underlay: 'geantdistance'
-  access_link_capacity: 1.0e+9
+  access_link_capacity: 1.0e+7
   core_link_capacity: 1.0e+9
   lan_capacity: 1.0e+11
   local_update_time: 0.07576

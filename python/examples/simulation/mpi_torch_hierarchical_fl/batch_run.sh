@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
-
 RANDOM_SEED=0
 GROUP_NUM=9
 GROUP_METHOD="hetero"
 COMM_ROUND=100000
 TIME_BUDGET=4000
-TOPO_NAME="complete"
+TOPO_NAME="ring"
 GROUP_COMM_PATTERN="decentralized"
 CONFIG_PATH=config/cifar10_resnet56/fedml_config.yaml
 
-group_comm_round_list=(1 5 10 50 100) # decentralized
+group_comm_round_list=(0 1 5 10 50 100) # decentralized
 group_comm_round_list=(1 4 10) # centralized
 group_alpha_list=(0.01 0.1 1.0)
 
 # cpfedavg
-group_comm_round_list=(0 1 5 10 50 100)
+group_comm_round_list=(0 1 5 10 50 100) # decentralized
 group_alpha_list=(0.01)
 
 WORKER_NUM=$(($GROUP_NUM+1))
@@ -57,7 +56,6 @@ do
     & echo $! >> batch_log/process.pid
     sleep 100
   done
-
 done
 
 echo "Finished!"

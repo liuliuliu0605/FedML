@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-pattern=pfl
+pattern=rar
 underlay=geantdistance
 ps_num=9
 model_size=2401488
@@ -9,6 +9,7 @@ model_size=2401488
 #core_link_capacity=1000000000
 
 topo_name_list=(complete 2d_torus ring star)
+topo_name_list=(ring)
 access_link_capacity_list=(1000000 10000000 100000000 1000000000)
 core_link_capacity_list=(1000000 10000000 100000000 1000000000)
 #access_link_capacity_list=(1000000)
