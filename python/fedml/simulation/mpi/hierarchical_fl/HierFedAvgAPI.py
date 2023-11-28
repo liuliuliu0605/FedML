@@ -108,7 +108,7 @@ def init_cloud_server(
         assert args.topo_name == 'ring'
         topology_manager = SymmetricTopologyManager(worker_num)
         topology_manager.generate_custom_topology(args)
-    elif args.group_comm_pattern == 'centralized':
+    elif args.group_comm_pattern in ['centralized', 'decentralized']:
         topology_manager = None
 
     # setup ns3 simulator
@@ -224,7 +224,7 @@ def setup_ns3_simulator(
     network.select_edge_pses(ps_num=args.group_num, method='mhrw')
     network.set_local_update_config(low=args.local_update_time*0.5, high=args.local_update_time*1.5)
 
-    if args.group_comm_pattern == 'centralized':
+    if args.group_comm_pattern in ['centralized', 'async-centralized']:
         network.select_cloud_ps(method='centroid')
 
     # TODO: save in wandb

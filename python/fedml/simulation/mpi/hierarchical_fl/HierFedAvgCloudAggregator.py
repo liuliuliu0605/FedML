@@ -45,6 +45,11 @@ class HierFedAVGCloudAggregator(object):
         for idx in range(self.worker_num):
             self.flag_client_model_uploaded_dict[idx] = False
 
+        # used in async model
+        if args.group_comm_pattern == 'async-centralized':
+            self.num_of_partial_updates = [0 for i in range(self.worker_num)]
+            self.init_model_params = copy.deepcopy(self.get_global_model_params())
+
     def get_global_model_params(self):
         return self.aggregator.get_model_params()
 
@@ -53,9 +58,9 @@ class HierFedAVGCloudAggregator(object):
 
     def add_local_trained_result(self, index, model_params_list, sample_num, param_estimation_dict):
         logging.info("add_model. index = %d" % index)
-        self.model_dict[index] = model_params_list
-        self.sample_num_dict[index] = sample_num
-        self.param_estimation_dict[index] = param_estimation_dict
+        self.model_dict[index] = model_params_list if model_params_list is not None else self.model_dict[index]
+        self.sample_num_dict[index] = sample_num if sample_num is not None else self.sample_num_dict[index]
+        self.param_estimation_dict[index] = param_estimation_dict if param_estimation_dict is not None else self.param_estimation_dict[index]
         self.flag_client_model_uploaded_dict[index] = True
 
     def check_whether_all_receive(self):
@@ -73,8 +78,6 @@ class HierFedAVGCloudAggregator(object):
         return agg_param_estimation_dict
 
     def aggregate(self):
-        start_time = time.time()
-
         # Edge server may conduct partial aggregation multiple times, so cloud server will receive a model list
         group_comm_round = len(self.sample_num_dict[0])
 
@@ -83,8 +86,9 @@ class HierFedAVGCloudAggregator(object):
             global_round_idx = self.model_dict[0][group_round_idx][0]
 
             for idx in range(0, self.worker_num):
-                model_list.append((self.sample_num_dict[idx][group_round_idx],
-                                   self.model_dict[idx][group_round_idx][1]))
+                model_list.append((1, self.model_dict[idx][group_round_idx][1]))
+                # model_list.append((self.sample_num_dict[idx][group_round_idx],
+                #                    self.model_dict[idx][group_round_idx][1]))
 
             averaged_params = self._fedavg_aggregation_(model_list)
             self.set_global_model_params(averaged_params)
@@ -106,56 +110,58 @@ class HierFedAVGCloudAggregator(object):
         # update the global model which is cached in the cloud
         self.set_global_model_params(averaged_params)
 
-        end_time = time.time()
-        logging.info("aggregate time cost: %d" % (end_time - start_time))
         return averaged_params
 
     def mix(self, topology_manager):
-        # Edge server may conduct partial aggregation multiple times, so cloud server will receive a model list
+        # edge server may conduct partial aggregation multiple times, so cloud server will receive a model list
         group_comm_round = len(self.sample_num_dict[0])
-        edge_model_list = [None for _ in range(self.worker_num)]
-
-        # p = cal_mixing_consensus_speed(topology_manager.topology, self.model_dict[0][0][0], self.args)
 
         for group_round_idx in range(group_comm_round):
             model_list = []
             global_round_idx = self.model_dict[0][group_round_idx][0]
 
-            for idx in range(self.worker_num):
-                model_list.append((self.sample_num_dict[idx][group_round_idx],
-                                   self.model_dict[idx][group_round_idx][1]))
+            for idx in range(0, self.worker_num):
+                model_list.append((1, self.model_dict[idx][group_round_idx][1]))
 
-            # mixing between neighbors
+            mixed_params_list = []
             for idx in range(self.worker_num):
-                edge_model_list[idx] = (self.sample_num_dict[idx][group_round_idx],
-                                        self._pfedavg_mixing_(model_list,
-                                                              topology_manager.get_in_neighbor_weights(idx))
-                                        )
-            # average for testing
-            averaged_params = self._fedavg_aggregation_(edge_model_list)
+                mixed_params_list.append((1, self._pfedavg_mixing_(model_list,
+                                                                   topology_manager.get_in_neighbor_weights(idx))))
+
+            averaged_params = self._fedavg_aggregation_(mixed_params_list)
             self.set_global_model_params(averaged_params)
             self.test_on_cloud_for_all_clients(global_round_idx)
 
-        # update the global model which is cached in the cloud
-        self.set_global_model_params(averaged_params)
-        return [edge_model for _, edge_model in edge_model_list]
+        return [mixed_params for _, mixed_params in mixed_params_list]
 
-    def _fedavg_aggregation_(self, model_list):
-        (num0, averaged_params) = model_list[0]
-        for k in averaged_params.keys():
-            for i in range(0, len(model_list)):
-                _, local_model_params = model_list[i]
-                if i == 0:
-                    averaged_params[k] = (
-                        local_model_params[k] * 1 / len(model_list)
-                    )
+    def async_aggregate(self, index):
+        group_comm_round = len(self.sample_num_dict[index])
+        self.num_of_partial_updates[index] += 1
+        sorted_edge_id_list = np.argsort(self.num_of_partial_updates)
+        weight_list = [0 for _ in range(self.worker_num)]
+
+        for i, _id in enumerate(sorted_edge_id_list):
+            weight_list[_id] = self.num_of_partial_updates[self.worker_num - i - 1]
+
+        for group_round_idx in range(group_comm_round):
+            global_round_idx = self.args.round_idx * self.args.group_comm_round + group_round_idx
+
+            model_list = []
+            for idx in range(0, self.worker_num):
+                if self.num_of_partial_updates[idx] == 0:
+                    model = self.init_model_params
                 else:
-                    averaged_params[k] += (
-                        local_model_params[k] * 1 / len(model_list)
-                    )
+                    model = self.model_dict[idx][group_round_idx][1]
+                model_list.append((weight_list[idx], model))
+
+            averaged_params = self._fedavg_aggregation_(model_list)
+            # averaged_params = self.model_dict[index][group_round_idx][1]
+            self.set_global_model_params(averaged_params)
+            self.test_on_cloud_for_all_clients(global_round_idx)
+
         return averaged_params
 
-    def _pfedavg_mixing_(self, model_list, neighbor_topo_weight_list):
+    def _fedavg_aggregation_(self, model_list):
         training_num = 0
         for i in range(0, len(model_list)):
             local_sample_number, local_model_params = model_list[i]
@@ -163,6 +169,25 @@ class HierFedAVGCloudAggregator(object):
 
         (num0, averaged_params) = model_list[0]
         averaged_params = copy.deepcopy(averaged_params)
+
+        for k in averaged_params.keys():
+            for i in range(0, len(model_list)):
+                local_sample_number, local_model_params = model_list[i]
+                if i == 0:
+                    averaged_params[k] = (
+                        local_model_params[k] * local_sample_number / training_num
+                    )
+                else:
+                    averaged_params[k] += (
+                        local_model_params[k] * local_sample_number / training_num
+                    )
+        return averaged_params
+
+    def _pfedavg_mixing_(self, model_list, neighbor_topo_weight_list):
+
+        (num0, averaged_params) = model_list[0]
+        averaged_params = copy.deepcopy(averaged_params)
+
         for k in averaged_params.keys():
             for i in range(0, len(model_list)):
                 local_sample_number, local_model_params = model_list[i]

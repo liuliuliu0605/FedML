@@ -16,11 +16,12 @@ def time_consuming_one_round(
         args, process_id, mpi_comm, network, sampled_client_indexes, model_size,
         topology_manager, system_id_list
 ):
+    model_size=1000
     config_param = "{}-{}".format(args.group_comm_pattern, args.group_comm_round)
     if args.fast_mode and config_param in network.time_history:
         logging.info("Rank {} runs in fast mode".format(process_id))
         delay_matrix, region_delay, global_delay = network.get_history(config_param)
-        args.ns3_time += delay_matrix.max()
+
     else:
         logging.info("Rank {} is running ns3 simulator".format(process_id))
         network.connect_pses(topology_manager, enable_optimization=True)
@@ -42,6 +43,10 @@ def time_consuming_one_round(
             delay_matrix, region_delay, global_delay = network.run_fl_hfl(model_size=model_size,
                                                                           group_comm_round=args.group_comm_round,
                                                                           start_time=0, stop_time=10000000)
+        elif args.group_comm_pattern == 'async-centralized':
+            delay_matrix, region_delay, global_delay = network.run_async_fl_hfl(model_size=model_size,
+                                                                                group_comm_round=args.group_comm_round,
+                                                                                start_time=0, stop_time=10000000)
         elif args.group_comm_pattern == 'allreduce':
             delay_matrix, region_delay, global_delay = network.run_fl_rar(model_size=model_size,
                                                                           group_comm_round=args.group_comm_round,
@@ -54,8 +59,6 @@ def time_consuming_one_round(
 
         ns.mpi.MpiInterface.Disable()
 
-        args.ns3_time += delay_matrix.max()
-
         if process_id == 0 and args.enable_wandb:
             wandb.log({"Estimation/ps_client_time": region_delay.mean(), "comm_round": args.round_idx})
             wandb.log({"Estimation/ps_ps_time": global_delay.mean(), "comm_round": args.round_idx})
@@ -64,6 +67,13 @@ def time_consuming_one_round(
             # TODO: save in wandb
             # network.plot_ps_overlay_topology(save_path="overlay.png")
 
+    if args.group_comm_pattern in ['decentralized', 'centralized', 'allreduce']:
+        args.ns3_time += delay_matrix.max()
+    elif args.group_comm_pattern in ['async-centralized']:
+        current_time_list = region_delay + global_delay + args.ns3_time_arr
+        min_index = np.argmin(current_time_list)
+        args.ns3_time = current_time_list[min_index]
+        args.ns3_time_arr[min_index] = args.ns3_time
 
 def calculate_optimal_tau1(args, convergence_param_dict, time_dict, p, zeta=1.0):
     # {'sigma': 1.6627908909580238, 'L': 80.46860672820361, 'gamma': 4.5684504507218975, 'psi': 0.041040657805953944,

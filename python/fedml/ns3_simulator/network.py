@@ -1,3 +1,5 @@
+import copy
+
 from ns import ns
 from .communicator import Communicator
 from .decentralized_consensus import DecentralizedConsensus
@@ -566,7 +568,7 @@ class Network:
 
         return communicator_list
 
-    def generate_ps_ps_communicators(self, include_cloud_ps=False):
+    def generate_ps_ps_communicators(self, include_cloud_ps=False, sync=True):
         edge_communicator_list = []
         for i in range(self.edge_ps_num):
             edge_comm = Communicator(self.pses.Get(i), _id="edge_ps %s" % self.edge_ps_id_list[i],
@@ -579,11 +581,17 @@ class Network:
         # topology_map is initialized when selecting edge pses and refined when connecting them via some topology
         self._adjust_edge_communicators(edge_communicator_list)
 
-        if include_cloud_ps:
+        if include_cloud_ps and sync:
             cloud_ps = self.pses.Get(self.edge_ps_num)
             cloud_comm = Communicator(cloud_ps, _id="cloud_ps %s" % self.cloud_id,
                                       global_ip_dict=self.ps_ps_ip_dict,
                                       protocol=self.protocol, verbose=self.verbose)
+        elif include_cloud_ps and not sync:
+            cloud_ps = self.pses.Get(self.edge_ps_num)
+            cloud_comm = [Communicator(cloud_ps, _id="cloud_ps %s" % self.cloud_id,
+                                       global_ip_dict=self.ps_ps_ip_dict,
+                                       protocol=self.protocol, verbose=self.verbose)
+                          for _ in range(self.edge_ps_num)]
         else:
             cloud_comm = None
 
@@ -625,7 +633,7 @@ class Network:
             distribute_matrix[0, 0] = 0
             ps_client_distribution = DecentralizedConsensus(model_size, distribute_communicators, distribute_matrix,
                                                packet_size=self.packet_size, protocol=self.protocol,
-                                               verbose=self.verbose, mpi_comm=self.mpi_comm, base_port=5000)
+                                               verbose=self.verbose, mpi_comm=self.mpi_comm, base_port=4000)
             ps_client_distribution.init_app(start_time, stop_time, phases, initial_message=initial_message)
             ps_client_distribution_list.append(ps_client_distribution)
 
@@ -635,7 +643,7 @@ class Network:
             agg_matrix[0, 0] = 0
             client_ps_aggregation = DecentralizedConsensus(model_size, agg_communicators, agg_matrix,
                                                             packet_size=self.packet_size, protocol=self.protocol,
-                                                            verbose=self.verbose, mpi_comm=self.mpi_comm, base_port=5000)
+                                                            verbose=self.verbose, mpi_comm=self.mpi_comm, base_port=4000)
             client_ps_aggregation.init_app(start_time, stop_time, phases, initial_message=None)
             client_ps_aggregation_list.append(client_ps_aggregation)
 
@@ -691,6 +699,40 @@ class Network:
         cloud_edge_distribution.init_app(start_time, stop_time, phases=1, initial_message=None)
 
         return edge_cloud_aggregation, cloud_edge_distribution
+
+    def set_async_hfl_step(self, model_size, start_time=0, stop_time=10000000, initial_message='0'):
+        agg_edge_communicators, agg_cloud_communicators = self.generate_ps_ps_communicators(include_cloud_ps=True, sync=False)
+        dis_edge_communicators, dis_cloud_communicators = self.generate_ps_ps_communicators(include_cloud_ps=True, sync=False)
+
+        def cloud_receive_model(agg_comm):
+            agg_comm.generate_message('hello')
+
+        # edge servers send models to cloud server
+        agg_matrix = np.zeros((2, 2))
+        agg_matrix[1, 0] = 1
+        edge_cloud_aggregation_list = []
+        for i, (agg_edge_communicator, agg_cloud_communicator) in enumerate(zip(agg_edge_communicators, agg_cloud_communicators)):
+            edge_cloud_aggregation = DecentralizedConsensus(
+                model_size, [agg_cloud_communicator, agg_edge_communicator], agg_matrix, packet_size=self.packet_size,
+                protocol=self.protocol, verbose=self.verbose, mpi_comm=self.mpi_comm, base_port=5000+i
+            )
+            edge_cloud_aggregation.init_app(start_time, stop_time, phases=1, initial_message=initial_message)
+            agg_cloud_communicator.register_phase_callback(cloud_receive_model, dis_cloud_communicators[i])
+            edge_cloud_aggregation_list.append(edge_cloud_aggregation)
+
+        # cloud server distributes models to edge servers
+        distribute_matrix = np.zeros((2, 2))
+        distribute_matrix[0, 1] = 1
+        cloud_edge_distribution_list = []
+        for i, (dis_edge_communicator, dis_cloud_communicator) in enumerate(zip(dis_edge_communicators, dis_cloud_communicators)):
+            cloud_edge_distribution = DecentralizedConsensus(
+                model_size, [dis_cloud_communicator, dis_edge_communicator], distribute_matrix,
+                packet_size=self.packet_size, protocol=self.protocol, verbose=self.verbose,
+                mpi_comm=self.mpi_comm, base_port=5000+i)
+            cloud_edge_distribution.init_app(start_time, stop_time, phases=1, initial_message=None)
+            cloud_edge_distribution_list.append(cloud_edge_distribution)
+
+        return edge_cloud_aggregation_list, cloud_edge_distribution_list
 
     def add_history(self, config_param, data):
         if config_param in self.time_history:
@@ -768,6 +810,46 @@ class Network:
                                          for client_ps_aggregation in client_ps_aggregation_list])
         ps_global_agg_delay = np.array(
             [ps_ps_delay_matrix[:, i+1].max() - ps_partial_agg_delay[i] for i in range(self.edge_ps_num)])
+        return ps_ps_delay_matrix, ps_partial_agg_delay, ps_global_agg_delay
+
+    def run_async_fl_hfl(self, model_size, group_comm_round=1, start_time=0, stop_time=10000000):
+        ps_client_distribution_list, client_ps_aggregation_list = self.set_fl_step(model_size,
+                                                                                   start_time=start_time,
+                                                                                   stop_time=stop_time,
+                                                                                   phases=group_comm_round)
+        edge_cloud_aggregation_list, cloud_edge_distribution_list = self.set_async_hfl_step(model_size,
+                                                                                            start_time=start_time,
+                                                                                            stop_time=stop_time,
+                                                                                            initial_message=None)
+
+        # edge server receives models from clients ps, aggregate then and send to cloud ps
+        def ps_receive_model_from_clients(mix_comm):
+            mix_comm.generate_message('hello')
+
+        for i in range(self.edge_ps_num):
+            ps_partial_agg_communicator = client_ps_aggregation_list[i].communicator_list[0] # index 0 refers to ps communicator
+            ps_global_agg_communicator = edge_cloud_aggregation_list[i].communicator_list[1]
+            ps_partial_agg_communicator.register_finish_callback(ps_receive_model_from_clients,
+                                                                 ps_global_agg_communicator)
+
+        start_of_simulation = ns.core.Simulator.Now().GetSeconds()
+        ns.core.Simulator.Run()
+        ns.core.Simulator.Destroy()
+        for ps_client_distribution, client_ps_aggregation in zip(ps_client_distribution_list, client_ps_aggregation_list):
+            ps_client_distribution.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
+            client_ps_aggregation.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
+
+        ps_ps_delay_matrix = np.zeros((self.edge_ps_num+1, self.edge_ps_num+1))
+        for i, cloud_edge_distribution in enumerate(cloud_edge_distribution_list):
+            cloud_edge_distribution.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
+            ps_ps_delay_matrix[0, i+1] = cloud_edge_distribution.time_consuming_matrix[0, 1]
+
+        ps_partial_agg_delay = np.array([client_ps_aggregation.time_consuming_matrix[:, 0].max()
+                                         for client_ps_aggregation in client_ps_aggregation_list])
+        ps_global_agg_delay = np.array(
+            [ps_ps_delay_matrix[0, i+1] - ps_partial_agg_delay[i] for i in range(self.edge_ps_num)]
+        )
+
         return ps_ps_delay_matrix, ps_partial_agg_delay, ps_global_agg_delay
 
     def run_fl_rar(self, model_size, group_comm_round=1, start_time=0, stop_time=10000000):

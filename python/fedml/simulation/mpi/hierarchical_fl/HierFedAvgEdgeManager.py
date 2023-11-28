@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 
 from .message_define import MyMessage
 from ....core.distributed.fedml_comm_manager import FedMLCommManager
@@ -25,6 +26,7 @@ class HierFedAVGEdgeManager(FedMLCommManager):
 
         if hasattr(self.args, 'enable_ns3') and self.args.enable_ns3:
             self.args.ns3_time = 0
+            self.args.ns3_time_arr = np.array([0. for _ in range(self.size - 1)])
         self.trigger_dynamic_group_comm = True if self.args.group_comm_round <= 0 else False
         self.num_of_model_params = 0
 
@@ -79,7 +81,6 @@ class HierFedAVGEdgeManager(FedMLCommManager):
                                                                                 total_sampled_data_size,
                                                                                 is_estimate)
 
-
         self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
 
     def handle_message_receive_model_from_cloud(self, msg_params):
@@ -93,25 +94,33 @@ class HierFedAVGEdgeManager(FedMLCommManager):
 
         self.args.round_idx += 1
 
+        # group comm round is adjusted if enabled
         if group_comm_round is not None:
             self.args.group_comm_round = group_comm_round
 
+        # time consumed int the coming round
         if self.args.enable_ns3:
             time_consuming_one_round(
                 self.args, self.rank, self.comm, self.network, sampled_client_indexes,
                 self.num_of_model_params * 4, topology_manager, list(range(1, self.size))
             )
 
+        # estimate parameters
         is_estimate = False
         if (
                 self.args.round_idx == 0 and self.trigger_dynamic_group_comm
                 or self.args.enable_parameter_estimation
         ):
             is_estimate = True
-        w_group_list, sample_num_list, param_estimation_dict = \
-            self.group.train(self.args.round_idx, global_model_params, sampled_client_indexes[edge_index],
-                             total_sampled_data_size, is_estimate)
-        self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
+
+        # if global_model_params is None, edge will not train in this round
+        if global_model_params is None:
+            self.send_model_to_cloud(0, None, None, None)
+        else:
+            w_group_list, sample_num_list, param_estimation_dict = \
+                self.group.train(self.args.round_idx, global_model_params, sampled_client_indexes[edge_index],
+                                 total_sampled_data_size, is_estimate)
+            self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
 
         if self.args.round_idx == self.num_rounds:
             post_complete_message_to_sweep_process(self.args)

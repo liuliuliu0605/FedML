@@ -10,5 +10,5 @@ parser.add_argument('--topo_name', type=str, default='complete', help='The topol
 parser.add_argument('--group_comm_round', type=int, default=1, help='The number of local aggregations')
 parser.add_argument('--mix_comm_round', type=int, default=1, help='The number of mixing times')
 parser.add_argument('--underlay', type=str, default='geantdistance', help='The underlay topology')
-parser.add_argument('--access_link_capacity', type=float, default=1.0e+9, help='access link capacity')
+parser.add_argument('--access_link_capacity', type=float, default=1.0e+7, help='access link capacity')
 parser.add_argument('--core_link_capacity', type=float, default=1.0e+9, help='core link capacity')

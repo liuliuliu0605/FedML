@@ -61,6 +61,8 @@ elif pattern == 'hfl':
     _, app = network.set_hfl_step(model_size, start_time=0, stop_time=10000000, initial_message='0')
 elif pattern == 'rar':
     app = network.set_pfl_step(model_size//ps_num, start_time=0, stop_time=10000000, phases=2*(ps_num-1), initial_message='0')
+elif pattern == 'async-hfl':
+    _, app_list = network.set_async_hfl_step(model_size, start_time=0, stop_time=10000000, initial_message='0')
 
 start_of_simulation = ns.core.Simulator.Now().GetSeconds()
 
@@ -69,8 +71,16 @@ ns.core.Simulator.Run()
 t_b = time.time()
 
 ns.core.Simulator.Destroy()
-app.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
-time_consuming_matrix = app.time_consuming_matrix
+
+if pattern in ['pfl', 'hfl', 'rar']:
+    app.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
+    time_consuming_matrix = app.time_consuming_matrix
+elif pattern in ['async-hfl']:
+    time_consuming_matrix = np.zeros((ps_num+1, ps_num+1))
+    for i, app in enumerate(app_list):
+        app.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
+        time_consuming_matrix[0, i+1] = app.time_consuming_matrix[0, 1]
+        print(app.time_consuming_matrix[0, 1])
 
 # aa.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
 # print(aa.time_consuming_matrix)
@@ -87,25 +97,25 @@ if enable_mpi:
     # destroy mpi if mpi mode
     ns.mpi.MpiInterface.Disable()
 
-if network.system_id == 0:
-    if pattern == 'pfl' or pattern == 'rar':
-        recv_time_list = []
-        for i in range(ps_num):
-            neighbour_list = topology_manager.get_in_neighbor_idx_list(i)
-            recv_time_list.append(time_consuming_matrix[:, i][neighbour_list].max())
-        file_name = '%s-%s-ps_%d-topo_%s-model_%d.txt' % (pattern, underlay, ps_num, args.topo_name, model_size)
-    elif pattern == 'hfl':
-        recv_time_list = time_consuming_matrix[0, 1:]
-        file_name = '%s-%s-ps_%d-model_%d.txt' % (pattern, underlay, ps_num, model_size)
-
-    with open(file_name, 'a') as f:
-        f.write("%d, %d, %.3f, %.3f, %.3f, %d\n" %
-                (access_link_capacity,
-                 core_link_capacity,
-                 np.min(recv_time_list),
-                 np.max(recv_time_list),
-                 np.mean(recv_time_list),
-                 t_b-t_a))
-
-    if app.finished_or_not():
-        print("done!")
+# if network.system_id == 0:
+#     if pattern == 'pfl' or pattern == 'rar':
+#         recv_time_list = []
+#         for i in range(ps_num):
+#             neighbour_list = topology_manager.get_in_neighbor_idx_list(i)
+#             recv_time_list.append(time_consuming_matrix[:, i][neighbour_list].max())
+#         file_name = '%s-%s-ps_%d-topo_%s-model_%d.txt' % (pattern, underlay, ps_num, args.topo_name, model_size)
+#     elif pattern == 'hfl':
+#         recv_time_list = time_consuming_matrix[0, 1:]
+#         file_name = '%s-%s-ps_%d-model_%d.txt' % (pattern, underlay, ps_num, model_size)
+#
+#     with open(file_name, 'a') as f:
+#         f.write("%d, %d, %.3f, %.3f, %.3f, %d\n" %
+#                 (access_link_capacity,
+#                  core_link_capacity,
+#                  np.min(recv_time_list),
+#                  np.max(recv_time_list),
+#                  np.mean(recv_time_list),
+#                  t_b-t_a))
+#
+#     if app.finished_or_not():
+#         print("done!")

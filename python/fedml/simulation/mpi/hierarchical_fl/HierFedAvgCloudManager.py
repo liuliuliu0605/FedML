@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 
 from .message_define import MyMessage
 from ....core.distributed.fedml_comm_manager import FedMLCommManager
@@ -46,10 +47,10 @@ class HierFedAVGCloudManager(FedMLCommManager):
 
         if hasattr(self.args, 'enable_ns3') and self.args.enable_ns3:
             self.args.ns3_time = 0
+            self.args.ns3_time_arr = np.array([0. for _ in range(self.size-1)])
         self.trigger_dynamic_group_comm = True if self.args.group_comm_round <= 0 else False
         self.args.group_comm_round = 1 if self.args.group_comm_round <= 0 else self.args.group_comm_round
         self.num_of_model_params = 0
-
 
         N_tilde, n_tilde = 0, 0
         for i in range(args.group_num):
@@ -131,23 +132,34 @@ class HierFedAVGCloudManager(FedMLCommManager):
         self.aggregator.add_local_trained_result(
             sender_id - 1, model_params_list, sample_num_list, param_estimation_dict
         )
+
         b_all_received = self.aggregator.check_whether_all_receive()
         logging.info("b_all_received = " + str(b_all_received))
+
+        # aggregate after receiving all models or asynchronously aggregate models
+        # if b_all_received or self.args.group_comm_pattern == 'async-centralized':
         if b_all_received:
-            # If topology_manage is None, it is simple average. Otherwise, it is mixing between neighbours.
+
+            # mix or average according to group comm pattern
             global_model_params = None
-            global_model_params_list = []
+            expected_sender_id = -1     # used in async mode
             if self.args.group_comm_pattern in ['centralized', 'allreduce']:
                 global_model_params = self.aggregator.aggregate()
-            else:
-                global_model_params_list = self.aggregator.mix(self.topology_manager)
+            elif self.args.group_comm_pattern in ['decentralized']:
+                global_model_params = self.aggregator.mix(self.topology_manager)
+            elif self.args.group_comm_pattern in ['async-centralized']:
+                expected_sender_id = np.where(self.args.ns3_time_arr == self.args.ns3_time)[0][0] + 1
+                global_model_params = self.aggregator.async_aggregate(expected_sender_id-1)
+                print("++++agg_ps={}".format(expected_sender_id-1))
 
+            # estimate parameters
             if (
                     self.args.round_idx == 0 and self.trigger_dynamic_group_comm
                     or self.args.enable_parameter_estimation
             ):
                 self.convergence_param_dict.update(self.aggregator.aggregate_estimated_params())
 
+            # adjust group comm round if enabled
             if self.trigger_dynamic_group_comm:
                 assert self.args.enable_ns3 is True
                 p = cal_mixing_consensus_speed(self.args, self.topology_manager.topology)
@@ -175,6 +187,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
                 self.finish()
                 return
 
+            # sample clients
             sampled_group_to_client_indexes = {}
             total_sampled_data_size = 0
             for group_idx, client_num_per_round in enumerate(self.group_to_client_num_per_round):
@@ -189,25 +202,33 @@ class HierFedAVGCloudManager(FedMLCommManager):
                     client_idx = self.group_to_client_indexes[group_idx][index]
                     sampled_group_to_client_indexes[group_idx].append(client_idx)
                     total_sampled_data_size += self.aggregator.train_data_local_num_dict[client_idx]
-
             logging.info(
                 "client_indexes of each group = {}".format(sampled_group_to_client_indexes)
             )
 
+            # distribute models
             for receiver_id in range(1, self.size):
-                if self.args.group_comm_pattern in ['decentralized']:
-                    global_model_params = global_model_params_list[receiver_id - 1]
+                edge_model = None
+                if self.args.group_comm_pattern in ['centralized', 'allreduce']:
+                    edge_model = global_model_params
+                elif self.args.group_comm_pattern in ['decentralized']:
+                    edge_model = global_model_params[receiver_id - 1]
+                elif self.args.group_comm_pattern in ['async-centralized']:
+                    # if edge model is None, edge will not train in the coming round
+                    if receiver_id == expected_sender_id:
+                        edge_model = global_model_params
+                    # total_sampled_data_size = 0
 
                 self.send_message_sync_model_to_edge(
                     receiver_id,
-                    global_model_params,
+                    edge_model,
                     sampled_group_to_client_indexes,
                     total_sampled_data_size,
                     receiver_id - 1
                 )
 
+            # time consumed int the coming round
             if self.args.enable_ns3:
-                # time consumed int the coming round
                 time_consuming_one_round(
                     self.args, self.rank, self.comm, self.network, sampled_group_to_client_indexes,
                     self.num_of_model_params * 4, self.topology_manager, list(range(1, self.size))
