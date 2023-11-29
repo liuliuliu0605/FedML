@@ -16,7 +16,6 @@ def time_consuming_one_round(
         args, process_id, mpi_comm, network, sampled_client_indexes, model_size,
         topology_manager, system_id_list
 ):
-    model_size=1000
     config_param = "{}-{}".format(args.group_comm_pattern, args.group_comm_round)
     if args.fast_mode and config_param in network.time_history:
         logging.info("Rank {} runs in fast mode".format(process_id))

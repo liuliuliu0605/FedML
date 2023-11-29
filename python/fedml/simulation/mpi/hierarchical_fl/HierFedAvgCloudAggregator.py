@@ -137,11 +137,11 @@ class HierFedAVGCloudAggregator(object):
     def async_aggregate(self, index):
         group_comm_round = len(self.sample_num_dict[index])
         self.num_of_partial_updates[index] += 1
-        sorted_edge_id_list = np.argsort(self.num_of_partial_updates)
+        sorted_edge_id_list = np.argsort(self.num_of_partial_updates)[::-1]
         weight_list = [0 for _ in range(self.worker_num)]
 
         for i, _id in enumerate(sorted_edge_id_list):
-            weight_list[_id] = self.num_of_partial_updates[self.worker_num - i - 1]
+            weight_list[_id] = self.num_of_partial_updates[sorted_edge_id_list[self.worker_num - i - 1]]
 
         for group_round_idx in range(group_comm_round):
             global_round_idx = self.args.round_idx * self.args.group_comm_round + group_round_idx
@@ -155,7 +155,6 @@ class HierFedAVGCloudAggregator(object):
                 model_list.append((weight_list[idx], model))
 
             averaged_params = self._fedavg_aggregation_(model_list)
-            # averaged_params = self.model_dict[index][group_round_idx][1]
             self.set_global_model_params(averaged_params)
             self.test_on_cloud_for_all_clients(global_round_idx)
 
