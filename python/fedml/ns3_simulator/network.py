@@ -49,6 +49,7 @@ class Network:
         self.ps_connectivity_graph = None
         self.ps_overlay_graph = None
         self.underlay_node_pos = {}
+        self.overlay_node_pos = {}
         self.cloud_id = None
         self.edge_ps_id_list = []
         self.client_id_list = []
@@ -429,24 +430,38 @@ class Network:
                          style='--', edge_color='g', pos=pos, ax=ax)
         edge_labels = {(u, v): "%d ms" % (d['latency'] * 1000) for u, v, d in graph.edges(data=True)}
         nx.draw_networkx_edge_labels(graph, edge_labels=edge_labels, pos=pos, ax=ax)
-        _, save_formate = os.path.splitext(save_path)
-        save_formate = 'pdf' if save_formate == '' else save_formate[1:]
+
+        if type(save_path) is str:
+            _, save_formate = os.path.splitext(save_path)
+            save_formate = 'pdf' if save_formate == '' else save_formate[1:]
+        else:
+            save_formate = 'png'
         plt.savefig(save_path, format=save_formate, dpi=100, bbox_inches='tight', pad_inches=-0.03)
         if self.verbose:
             print("Underlay info: ", graph)
 
-    def plot_ps_overlay_topology(self, figsize=(10, 10), save_path="topology.pdf", virtual_pos=True):
+    def plot_ps_overlay_topology(self, figsize=(10, 10), save_path="topology.pdf", edge_label=False):
         fig, ax = plt.subplots(figsize=figsize)
         graph = self.ps_overlay_graph.copy()
-        pos = nx.spring_layout(graph) if virtual_pos else self.underlay_node_pos
+        if self.overlay_node_pos == {}:
+            pos = nx.spring_layout(graph)
+            self.overlay_node_pos = pos
+        else:
+            pos = self.overlay_node_pos
+
         nx.draw_networkx(graph, width=2, alpha=0.8, with_labels=True, style='--', edge_color='g', pos=pos, ax=ax)
 
-        edge_labels = {(u, v): "%d ms, %d Mbps" % (d['latency'] * 1000, d['availableBandwidth'] / 1e6)
-                       for u, v, d in graph.edges(data=True)}  # ms, Mbps
-        link_delay_list = [d['latency'] * 1000 for _, _, d in graph.edges(data=True)]
-        nx.draw_networkx_edge_labels(graph, edge_labels=edge_labels, pos=pos, ax=ax)
-        _, save_formate = os.path.splitext(save_path)
-        save_formate = 'pdf' if save_formate == '' else save_formate[1:]
+        if edge_label:
+            edge_labels = {(u, v): "%d ms, %d Mbps" % (d['latency'] * 1000, d['availableBandwidth'] / 1e6)
+                           for u, v, d in graph.edges(data=True)}  # ms, Mbps
+            link_delay_list = [d['latency'] * 1000 for _, _, d in graph.edges(data=True)]
+            nx.draw_networkx_edge_labels(graph, edge_labels=edge_labels, pos=pos, ax=ax)
+
+        if type(save_path) is str:
+            _, save_formate = os.path.splitext(save_path)
+            save_formate = 'pdf' if save_formate == '' else save_formate[1:]
+        else:
+            save_formate = 'png'
         plt.savefig(save_path, format=save_formate, dpi=100, bbox_inches='tight', pad_inches=-0.03)
         if self.verbose:
             print("PS overlay info: ", graph)
@@ -462,14 +477,41 @@ class Network:
         edge_labels = {(u, v): "%d ms, %d Mbps" % (d['latency'] * 1000, d['availableBandwidth'] / 1e6)
                        for u, v, d in graph.edges(data=True)}  # ms, Mbps
         nx.draw_networkx_edge_labels(graph, edge_labels=edge_labels, pos=pos, ax=ax)
-        _, save_formate = os.path.splitext(save_path)
-        save_formate = 'pdf' if save_formate == '' else save_formate[1:]
+
+        if type(save_path) is str:
+            _, save_formate = os.path.splitext(save_path)
+            save_formate = 'pdf' if save_formate == '' else save_formate[1:]
+        else:
+            save_formate = 'png'
         plt.savefig(save_path, format=save_formate, dpi=100, bbox_inches='tight', pad_inches=-0.03)
         if self.verbose:
             print("PS connectivity info: ", graph)
 
+    def update_topology(self, new_topology, new_overlay):
+        self.topology_manager.topology = new_topology
+        self.ps_overlay_graph = new_overlay
+
+    def get_latency(self, overlay_i, overlay_j):
+        node_i = self.edge_ps_id_list[self.topology_map[overlay_i]]
+        node_j = self.edge_ps_id_list[self.topology_map[overlay_j]]
+        return self.ps_connectivity_graph.get_edge_data(node_i, node_j)['latency']
+
+    def add_edge(self, overlay_i, overlay_j):
+        self.topology_manager.add_edge(overlay_i, overlay_j)
+        node_i = self.edge_ps_id_list[self.topology_map[overlay_i]]
+        node_j = self.edge_ps_id_list[self.topology_map[overlay_j]]
+        edge_data = self.ps_connectivity_graph.get_edge_data(node_i, node_j)
+        self.ps_overlay_graph.add_edge(node_i, node_j,
+                                       latency=edge_data['latency'],
+                                       availableBandwidth=edge_data['availableBandwidth'])
+
+    def remove_edge(self, overlay_i, overlay_j):
+        self.topology_manager.remove_edge(overlay_i, overlay_j)
+        node_i = self.edge_ps_id_list[self.topology_map[overlay_i]]
+        node_j = self.edge_ps_id_list[self.topology_map[overlay_j]]
+        self.ps_overlay_graph.remove_edge(node_i, node_j)
+
     def connect_pses(self, topology_manager, enable_optimization=True):
-        # TODO: handle hfl case
         if topology_manager is not None:
             self.topology_manager = topology_manager
             rows, cols = [], []
@@ -545,6 +587,7 @@ class Network:
                                                latency=edge_data['latency'],
                                                availableBandwidth=edge_data['availableBandwidth'])
         else:
+            # TODO: handle hfl case
             self.ps_overlay_graph = nx.Graph()
             self.ps_overlay_graph.add_nodes_from(self.ps_connectivity_graph.nodes(data=True))
 
@@ -977,17 +1020,6 @@ class Network:
             topo = nx.adjacency_matrix(self._target_overlay_graph, weight=weight).toarray()
         wmatrix = optimal_mixing_weight(topo)
         return wmatrix
-
-    def add_connection(self, node_a, node_b, mix_weight=0):
-        source_node = self._ps_loc_list[node_a]
-        sink_node = self._ps_loc_list[node_b]
-        self._target_overlay_graph.add_edge(source_node, sink_node,
-                                            mixWeight=mix_weight,
-                                            latency=self._connectivity_graph.get_edge_data(source_node, sink_node)['latency'],
-                                            availableBandwidth=self._connectivity_graph.get_edge_data(source_node, sink_node)['availableBandwidth'])
-
-    def delete_connection(self, node_a, node_b):
-        self._target_overlay_graph.remove_edge(self._ps_loc_list[node_a], self._ps_loc_list[node_b])
 
     def print_overlay_info(self):
         latency_list = []

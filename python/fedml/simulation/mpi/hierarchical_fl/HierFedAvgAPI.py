@@ -14,6 +14,8 @@ from ....core.distributed.topology.symmetric_topology_manager import SymmetricTo
 from ns import ns
 from ....ns3_simulator.network import Network
 
+from PIL import Image
+
 import numpy as np
 import wandb
 
@@ -112,7 +114,7 @@ def init_cloud_server(
         topology_manager = None
 
     # setup ns3 simulator
-    network = setup_ns3_simulator(args, rank, comm)
+    network = setup_ns3_simulator(args, rank, comm, topology_manager)
 
     # aggregator
     aggregator = HierFedAVGCloudAggregator(
@@ -210,7 +212,9 @@ def setup_clients(
 def setup_ns3_simulator(
     args,
     process_id,
-    mpi_comm):
+    mpi_comm,
+    topology_manager=None
+    ):
     ns.core.GlobalValue.Bind("SimulatorImplementationType", ns.core.StringValue("ns3::DistributedSimulatorImpl"))
     # initialize network
     network = Network(access_link_capacity=args.access_link_capacity,
@@ -227,9 +231,19 @@ def setup_ns3_simulator(
     if args.group_comm_pattern in ['centralized', 'async-centralized']:
         network.select_cloud_ps(method='centroid')
 
-    # TODO: save in wandb
-    if process_id == 0:
-        network.plot_underlay_graph(save_path="underlay.png")
-        network.plot_ps_connectivity_graph(save_path="connectivity.png")
+    network.connect_pses(topology_manager, enable_optimization=True)
+
+    if process_id == 0 and args.enable_wandb:
+        import io
+        buf = io.BytesIO()
+        network.plot_underlay_graph(save_path=buf)
+        buf.seek(0)
+        img1 = Image.open(buf)
+        wandb.log({"Underlay": wandb.Image(img1)})
+        buf = io.BytesIO()
+        network.plot_ps_connectivity_graph(save_path=buf)
+        buf.seek(0)
+        img2 = Image.open(buf)
+        wandb.log({"Connectivity": wandb.Image(img2)})
 
     return network

@@ -54,6 +54,9 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         self.group.setup_clients(total_client_indexes[edge_index])
         self.args.round_idx = 0
 
+        # initialize overlay topology
+        self.network.connect_pses(topology_manager, enable_optimization=True)
+
         # get the number of model params
         self.num_of_model_params = 0
         for k in global_model_params:
@@ -66,7 +69,7 @@ class HierFedAVGEdgeManager(FedMLCommManager):
             # time consumed in the current round
             time_consuming_one_round(
                 self.args, self.rank, self.comm, self.network, sampled_client_indexes,
-                self.num_of_model_params * 4, topology_manager, list(range(1, self.size))
+                self.num_of_model_params * 4, list(range(1, self.size))
             )
 
         is_estimate = False
@@ -98,11 +101,11 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         if group_comm_round is not None:
             self.args.group_comm_round = group_comm_round
 
-        # time consumed int the coming round
+        # time consumed in current round
         if self.args.enable_ns3:
             time_consuming_one_round(
                 self.args, self.rank, self.comm, self.network, sampled_client_indexes,
-                self.num_of_model_params * 4, topology_manager, list(range(1, self.size))
+                self.num_of_model_params * 4, list(range(1, self.size))
             )
 
         # estimate parameters

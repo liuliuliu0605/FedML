@@ -44,16 +44,19 @@ topology_manager = SymmetricTopologyManager(ps_num)
 topology_manager.generate_custom_topology(args)
 
 network.read_underlay_graph(underlay_name=underlay)
+
 network.select_edge_pses(ps_num=ps_num, method='mhrw')
 network.select_cloud_ps(method='centroid')
 network.connect_pses(topology_manager, enable_optimization=True)
+# network.add_edge(0, 2)
+# network.add_edge(0, 3)
 
 # network.construct_network(graph_partition_method='girvan_newman')
 network.construct_network(graph_partition_method='random')
 
 # network.plot_underlay_graph(save_path="underlay.pdf")
 # network.plot_ps_connectivity_graph(save_path="connectivity.pdf")
-# network.plot_ps_overlay_topology(save_path="overlay.pdf")
+network.plot_ps_overlay_topology(save_path="overlay.pdf")
 
 if pattern == 'pfl':
     app = network.set_pfl_step(model_size, start_time=0, stop_time=10000000, phases=1, initial_message='0')

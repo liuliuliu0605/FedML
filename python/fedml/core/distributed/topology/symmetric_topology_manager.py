@@ -19,6 +19,20 @@ class SymmetricTopologyManager(BaseTopologyManager):
         self.neighbor_num = neighbor_num
         self.topology = []
 
+    def add_edge(self, i, j):
+        self.topology = np.zeros((self.n, self.n)) if self.topology == [] else self.topology
+        adjacency_matrix = np.zeros_like(self.topology)
+        adjacency_matrix[self.topology > 0] = 1
+        adjacency_matrix[i, j] = adjacency_matrix[j, i] = 1
+        self.topology = get_topology(adjacency_matrix)
+
+    def remove_edge(self, i, j):
+        self.topology = np.zeros((self.n, self.n)) if self.topology == [] else self.topology
+        adjacency_matrix = np.zeros_like(self.topology)
+        adjacency_matrix[self.topology > 0] = 1
+        adjacency_matrix[i, j] = adjacency_matrix[j, i] = 0
+        self.topology = get_topology(adjacency_matrix)
+
     def generate_custom_topology(self, args):
         topo_name = args.topo_name
         if topo_name == 'ring':

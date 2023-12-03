@@ -23,10 +23,11 @@ train_args:
   group_method: "hetero"
   group_alpha: 0.01
   group_num: 9
-  group_comm_round: 5
+  group_comm_round: 0
   group_comm_pattern: "decentralized"
   topo_name: "ring"
   topo_edge_probability: 1.0
+  enable_dynamic_topo: True
 ns3_args:
   enable_parameter_estimation: False
   enable_ns3: True
@@ -50,6 +51,6 @@ tracking_args:
   # When running on MLOps platform(open.fedml.ai), the default log path is at ~/fedml-client/fedml/logs/ and ~/fedml-server/fedml/logs/
   enable_wandb: true
   wandb_key: ee0b5f53d949c84cee7decbe7a629e63fb2f8408
-  wandb_project: cpfedavg
+  wandb_project: cpfedavg-adjust-topo-test
   run_name: mpi_hierarchical_fl_cifar10_resnet56
   wandb_only_server: true
