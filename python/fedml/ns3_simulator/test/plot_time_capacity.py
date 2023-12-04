@@ -8,7 +8,7 @@ fig, axs = plt.subplots(nrows=rows, ncols=cols, figsize=(24, 14))
 
 underlay='geantdistance'
 ps_num=9
-model_size=10000000
+model_size=2401488
 core_link_capacity_list=[1000000000, 1000000000, 1000000000, 10000000, 100000000, 1000000000]
 access_link_capacity_list=[10000000, 100000000, 1000000000, 1000000000, 1000000000, 1000000000]
 

@@ -16,6 +16,7 @@ from PIL import Image
 def adjust_topo(args, topo_action_objective_list, network):
     # 1 refers to add and -1 refers to remove
     action = 1
+
     if len(topo_action_objective_list) >= 2:
         if topo_action_objective_list[-1][1] <= topo_action_objective_list[-2][1]:
             action = topo_action_objective_list[-1][0]
@@ -43,8 +44,8 @@ def adjust_topo(args, topo_action_objective_list, network):
         for i in range(len(topology)):
             for j in range(i+1, len(topology[i])):
                 if topology[i, j] > 0 and \
-                        len(network.topology_manager.get_in_neighbor_idx_list(i)) > 1 and \
-                        len(network.topology_manager.get_in_neighbor_idx_list(j)) > 1:
+                        len(network.topology_manager.get_in_neighbor_idx_list(i)) > 2 and \
+                        len(network.topology_manager.get_in_neighbor_idx_list(j)) > 2:
                     latency = network.get_latency(i, j)
                     if latency > maximum:
                         maximum = latency
@@ -56,9 +57,8 @@ def adjust_topo(args, topo_action_objective_list, network):
 def time_consuming_one_round(
         args, process_id, mpi_comm, network, sampled_client_indexes, model_size, system_id_list
 ):
-    config_param = "{}-{}".format(args.group_comm_pattern, args.group_comm_round)
-    if args.fast_mode and config_param in network.time_history and \
-            not args.enable_dynamic_topo:
+    config_param = "{}-{}-{}".format(args.group_comm_pattern, args.group_comm_round, network.topology_manager.topology)
+    if args.fast_mode and config_param in network.time_history:
         logging.info("Rank {} runs in fast mode".format(process_id))
         delay_matrix, region_delay, global_delay = network.get_history(config_param)
 
