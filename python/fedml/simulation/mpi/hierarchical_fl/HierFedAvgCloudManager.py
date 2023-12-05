@@ -45,6 +45,11 @@ class HierFedAVGCloudManager(FedMLCommManager):
             self.group_to_client_num_per_round[remain_client_num_list_per_round - 1] += 1
             remain_client_num_list_per_round -= 1
 
+        # make sure each group has at least one client
+        for i in range(args.group_num):
+            if self.group_to_client_num_per_round[i] == 0:
+                self.group_to_client_num_per_round[i] = 1
+
         if hasattr(self.args, 'enable_ns3') and self.args.enable_ns3:
             self.args.ns3_time = 0
             self.args.ns3_time_arr = np.array([0. for _ in range(self.size-1)])
