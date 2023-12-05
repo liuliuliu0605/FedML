@@ -92,14 +92,23 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         total_sampled_data_size = msg_params.get(MyMessage.MSG_ARG_KEY_TOTAL_SAMPLED_DATA_SIZE)
         global_model_params = msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS)
         edge_index = msg_params.get(MyMessage.MSG_ARG_KEY_EDGE_INDEX)
-        topology_manager = msg_params.get(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER)
+        # topology_manager = msg_params.get(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER)
         group_comm_round = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND)
+        adjust_topo = msg_params.get(MyMessage.MSG_ARG_KEY_ADJUST_TOPO)
 
         self.args.round_idx += 1
 
         # group comm round is adjusted if enabled
         if group_comm_round is not None:
             self.args.group_comm_round = group_comm_round
+
+        # adjust topo if enabled
+        if adjust_topo is not None:
+            op, choice = adjust_topo
+            if op == -1:
+                self.network.remove_edge(*choice)
+            elif op == 1:
+                self.network.add_edge(*choice)
 
         # time consumed in current round
         if self.args.enable_ns3:

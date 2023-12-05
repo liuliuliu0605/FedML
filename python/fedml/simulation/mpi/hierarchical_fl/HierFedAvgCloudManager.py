@@ -71,7 +71,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
             'avgN_minN': total_clients/args.group_num/min([len(self.group_to_client_indexes[i]) for i in range(args.group_num)])
         }
 
-        self.topo_action_objective_list = [[0, None]]  # (action, objective)
+        self.topo_action_objective_list = [[(0, None), None]]  # (action, objective)
 
         # self.is_preprocessed = is_preprocessed
         # self.preprocessed_client_lists = preprocessed_client_lists
@@ -180,7 +180,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
                 p = cal_mixing_consensus_speed(self.args, self.topology_manager.topology)
 
                 config_param = "{}-{}-{}".format(self.args.group_comm_pattern, self.args.group_comm_round,
-                                                 self.network.topology_manager.topology)
+                                                 self.network.topology_manager.topology if self.network.topology_manager is not None else 'none')
                 data = self.network.get_history(config_param)
 
                 time_dict = {
@@ -277,8 +277,10 @@ class HierFedAVGCloudManager(FedMLCommManager):
         message.add_params(MyMessage.MSG_ARG_KEY_TOTAL_SAMPLED_DATA_SIZE, total_sampled_data_size)
         message.add_params(MyMessage.MSG_ARG_KEY_MODEL_PARAMS, global_model_params)
         message.add_params(MyMessage.MSG_ARG_KEY_EDGE_INDEX, edge_index)
-        if self.topology_manager is not None:
-            message.add_params(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER, self.topology_manager)
+        # if self.topology_manager is not None:
+        #     message.add_params(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER, self.topology_manager)
         if self.trigger_dynamic_group_comm:
             message.add_params(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND, self.args.group_comm_round)
+        if self.args.enable_dynamic_topo:
+            message.add_params(MyMessage.MSG_ARG_KEY_ADJUST_TOPO, self.topo_action_objective_list[-1][0])
         self.send_message(message)

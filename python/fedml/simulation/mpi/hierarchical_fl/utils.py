@@ -19,10 +19,9 @@ def adjust_topo(args, topo_action_objective_list, network):
 
     if len(topo_action_objective_list) >= 2:
         if topo_action_objective_list[-1][1] <= topo_action_objective_list[-2][1]:
-            action = topo_action_objective_list[-1][0]
+            action = topo_action_objective_list[-1][0][0]
         else:
-            action = -topo_action_objective_list[-1][0]
-    topo_action_objective_list.append([action, None])
+            action = -topo_action_objective_list[-1][0][0]
 
     topology = network.topology_manager.topology
     choice = None
@@ -38,7 +37,7 @@ def adjust_topo(args, topo_action_objective_list, network):
                         choice = (i, j)
         if choice is not None:
             network.add_edge(*choice)
-    else:
+    elif action == -1:
         # remove edge with the highest latency
         maximum = -1
         for i in range(len(topology)):
@@ -53,11 +52,16 @@ def adjust_topo(args, topo_action_objective_list, network):
         if choice is not None:
             network.remove_edge(*choice)
 
+    action = action if choice is not None else 0
+    topo_action_objective_list.append([(action, choice), None])
+
+    return action, choice
 
 def time_consuming_one_round(
         args, process_id, mpi_comm, network, sampled_client_indexes, model_size, system_id_list
 ):
-    config_param = "{}-{}-{}".format(args.group_comm_pattern, args.group_comm_round, network.topology_manager.topology)
+    config_param = "{}-{}-{}".format(args.group_comm_pattern, args.group_comm_round,
+                                     network.topology_manager.topology if network.topology_manager is not None else 'none')
     if args.fast_mode and config_param in network.time_history:
         logging.info("Rank {} runs in fast mode".format(process_id))
         delay_matrix, region_delay, global_delay = network.get_history(config_param)

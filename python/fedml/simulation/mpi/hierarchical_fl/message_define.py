@@ -28,6 +28,7 @@ class MyMessage(object):
     MSG_ARG_KEY_PARAMETER_ESTIMATION_DICT = "param_estimation_dict"
     MSG_ARG_KEY_TOPOLOGY_MANAGER = "topology_manager"
     MSG_ARG_KEY_GROUP_COMM_ROUND = "group_comm_round"
+    MSG_ARG_KEY_ADJUST_TOPO = "adjust_topo"
 
     MSG_ARG_KEY_TRAIN_CORRECT = "train_correct"
     MSG_ARG_KEY_TRAIN_ERROR = "train_error"
