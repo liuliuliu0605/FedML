@@ -163,7 +163,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
 
             # start the next round
             self.args.round_idx += 1
-            if self.args.round_idx == self.round_num or \
+            if 0 < self.round_num <= self.args.round_idx or \
                     self.args.enable_ns3 and 0 < self.args.time_budget <= self.args.ns3_time:
                 post_complete_message_to_sweep_process(self.args)
                 self.finish()
@@ -174,7 +174,8 @@ class HierFedAVGCloudManager(FedMLCommManager):
                 assert self.args.enable_ns3 is True
                 p = cal_mixing_consensus_speed(self.args, self.topology_manager.topology)
 
-                config_param = "{}-{}".format(self.args.group_comm_pattern, self.args.group_comm_round)
+                config_param = "{}-{}-{}".format(self.args.group_comm_pattern, self.args.group_comm_round,
+                                                 self.network.topology_manager.topology)
                 data = self.network.get_history(config_param)
 
                 time_dict = {

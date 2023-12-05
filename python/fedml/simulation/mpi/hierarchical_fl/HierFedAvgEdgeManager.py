@@ -125,7 +125,8 @@ class HierFedAVGEdgeManager(FedMLCommManager):
                                  total_sampled_data_size, is_estimate)
             self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
 
-        if self.args.round_idx == self.num_rounds:
+        if 0 < self.num_rounds <= self.args.round_idx or \
+                self.args.enable_ns3 and 0 < self.args.time_budget <= self.args.ns3_time:
             post_complete_message_to_sweep_process(self.args)
             self.finish()
 
