@@ -2,19 +2,19 @@ common_args:
   training_type: "simulation"
   random_seed: 0
 data_args:
-  dataset: "cifar10"
+  dataset: "femnist"
   data_cache_dir: ~/fedml_data
   partition_method: "hetero"
   partition_alpha: 0.5
 model_args:
-  model: "resnet56"
+  model: "cnn"
 train_args:
   federated_optimizer: "HierarchicalFL"
   client_id_list: "[]"
-  client_num_in_total: 1000
+  client_num_in_total: 3400
   client_num_per_round: 90
   comm_round: 0
-  time_budget: 5000
+  time_budget: 3000
   epochs: 1
   batch_size: 10
   client_optimizer: sgd
@@ -23,9 +23,9 @@ train_args:
   group_method: "hetero"
   group_alpha: 0.01
   group_num: 9
-  group_comm_round: 100
-  group_comm_pattern: "decentralized"
-  topo_name: "ring"
+  group_comm_round: 4
+  group_comm_pattern: "async-centralized"
+  topo_name: "complete"
   topo_edge_probability: 1.0
   enable_dynamic_topo: false
 ns3_args:
@@ -36,13 +36,13 @@ ns3_args:
   access_link_capacity: 1.0e+7
   core_link_capacity: 1.0e+9
   lan_capacity: 1.0e+11
-  local_update_time: 0.07576
+  local_update_time: 0.0315
 validation_args:
   frequency_of_the_test: 5
 device_args:
   worker_num: 10
   using_gpu: true
-  gpu_mapping_file: config/cifar10_resnet56/gpu_mapping.yaml
+  gpu_mapping_file: config/femnist_cnn/gpu_mapping.yaml
   gpu_mapping_key: mapping_config1_10
 comm_args:
   backend: "MPI"
@@ -52,5 +52,5 @@ tracking_args:
   enable_wandb: true
   wandb_key: ee0b5f53d949c84cee7decbe7a629e63fb2f8408
   wandb_project: tpds-cpfedavg
-  run_name: mpi_hierarchical_fl_cifar10_resnet56
+  run_name: mpi_hierarchical_fl_femnist_cnn
   wandb_only_server: true

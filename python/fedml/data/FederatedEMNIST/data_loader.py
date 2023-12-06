@@ -160,6 +160,8 @@ def load_partition_data_federated_emnist(
         #     client_idx, len(train_data_local), len(test_data_local)))
         train_data_local_dict[client_idx] = train_data_local
         test_data_local_dict[client_idx] = test_data_local
+        if len(train_data_local) == 0:
+            train_data_local_dict[client_idx] = test_data_local
 
     # global dataset
     train_data_global = data.DataLoader(

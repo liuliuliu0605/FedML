@@ -26,11 +26,11 @@ mapping_config1_6:
 
 # this is used for 9 clients and 1 server training within a single machine which has 4 GPUs
 mapping_config1_10:
-    host1: [3, 2, 2, 3]
+    host1: [0, 2, 2, 2, 1, 1, 1, 1]
 
 # this is used for 10 clients and 1 server training within a single machine which has 4 GPUs
 mapping_config2_11:
-    host1: [0, 2, 2, 2, 1, 1, 1, 1]
+    host1: [2, 2, 2, 1, 1, 1, 1, 1]
 
 # this is used for 10 clients and 1 server training within a single machine which has 8 GPUs
 mapping_config3_11:
