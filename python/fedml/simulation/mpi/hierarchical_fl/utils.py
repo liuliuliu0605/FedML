@@ -219,10 +219,10 @@ def stats_group(group_to_client_indexes, train_data_local_dict, train_data_local
         ))
 
     if args.enable_wandb:
-        wandb.log({"Groups/Data_distribution": wandb.Table(data=ys, columns=list(range(class_num)))})
-        # wandb.log({"Groups/Data_distribution":
-        #                wandb.plot.line_series(xs=xs, ys=ys, keys=keys, title="Data distribution", xname="Label")}
-        #           )
+        # wandb.log({"Groups/Data_distribution": wandb.Table(data=ys, columns=list(range(class_num)))})
+        wandb.log({"Groups/Data_distribution":
+                       wandb.plot.line_series(xs=xs, ys=ys, keys=keys, title="Data distribution", xname="Label")}
+                  )
 
 
 def hetero_partition_groups(clients_type_list, num_groups, alpha=0.5):

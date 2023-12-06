@@ -13,6 +13,7 @@ from .Landmarks.data_loader import load_partition_data_landmarks
 from .MNIST.data_loader import load_partition_data_mnist, download_mnist
 from .cifar10.data_loader import load_partition_data_cifar10
 from .cifar10.efficient_loader import efficient_load_partition_data_cifar10
+from .cifar100.efficient_loader import efficient_load_partition_data_cifar100
 from .cifar100.data_loader import load_partition_data_cifar100
 from .cinic10.data_loader import load_partition_data_cinic10
 from .edge_case_examples.data_loader import load_poisoned_dataset
@@ -521,7 +522,8 @@ def load_synthetic_data(args):
                 data_loader = efficient_load_partition_data_cifar10
 
         elif dataset_name == "cifar100":
-            data_loader = load_partition_data_cifar100
+            # data_loader = load_partition_data_cifar100
+            data_loader = efficient_load_partition_data_cifar100
         elif dataset_name == "cinic10":
             data_loader = load_partition_data_cinic10
         else:
