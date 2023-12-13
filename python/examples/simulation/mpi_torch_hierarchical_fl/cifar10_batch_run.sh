@@ -1,8 +1,8 @@
 CONFIG_PATH=config/cifar10_resnet56/fedml_config.yaml
-RANDOM_SEED=10
+RANDOM_SEED=0
 GROUP_NUM=9
-COMM_ROUND=500
-TIME_BUDGET=0
+COMM_ROUND=0
+TIME_BUDGET=5000
 GROUP_METHOD=hetero
 GROUP_ALPHA=1.0
 TOPO_NAME=complete
@@ -23,7 +23,7 @@ group_alpha_list=(10.0 1.0 0.1)
 group_method_list=(random hetero)
 group_comm_pattern_list=(decentralized centralized async-centralized)
 
-
+group_alpha_list=(10.0 1.0 0.1)
 group_method_list=(hetero)
 group_comm_pattern_list=(decentralized)
 
@@ -38,10 +38,8 @@ do
     do
 
       if [ "${GROUP_COMM_PATTERN}" = "decentralized" ]; then
-#          group_comm_round_list=(0 1)
-#          topo_name_list=(complete 2d_torus ring star)
-          group_comm_round_list=(1)
-          topo_name_list=(ring)
+          group_comm_round_list=(0 1)
+          topo_name_list=(complete 2d_torus ring star)
         elif [ "${GROUP_COMM_PATTERN}" = "centralized" ];then
           group_comm_round_list=(4)
           topo_name_list=(complete)
@@ -68,6 +66,7 @@ do
                 --group_comm_round $GROUP_COMM_ROUND\
                 --access_link_capacity $ACCESS_LINK_CAPACITY --core_link_capacity $CORE_LINK_CAPACITY\
                 --lan_capacity $LAN_CAPACITY --local_update_time $LOCAL_UPDATE_TIME\
+                --enable_ns3\
                 > batch_log/$log_file 2>&1 \
                 & echo $! >> batch_log/process.pid
             #    --enable_ns3
