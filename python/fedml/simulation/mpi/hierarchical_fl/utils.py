@@ -57,6 +57,7 @@ def adjust_topo(args, topo_action_objective_list, network):
 
     return action, choice
 
+
 def time_consuming_one_round(
         args, process_id, mpi_comm, network, sampled_client_indexes, model_size, system_id_list
 ):

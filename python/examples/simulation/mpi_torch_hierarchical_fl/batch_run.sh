@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
 RANDOM_SEED=0
+PARTITION_ALPHA=0.1
 GROUP_NUM=9
+#GROUP_METHOD=random
 GROUP_METHOD=hetero
 COMM_ROUND=0
 TIME_BUDGET=5000
+#TIME_BUDGET=25000
 #COMM_ROUND=1000
 #TIME_BUDGET=0
 TOPO_NAME=ring
-ENABLE_DYNAMIC_TOPO=false
-ENABLE_NS3=true
 GROUP_COMM_PATTERN=decentralized
 CONFIG_PATH=config/cifar10_resnet56/fedml_config.yaml
+#CONFIG_PATH=config/cifar100_mobilenet_v3/fedml_config.yaml
 
+ENABLE_DYNAMIC_TOPO=false
+ENABLE_NS3=true
 ######################################################################
 # group_comm_round_list=(0 1 5 10 50 100) # decentralized
 # group_comm_round_list=(1 4 10) # centralized
 # group_alpha_list=(0.01 0.1 1.0)
-group_comm_round_list=(0 1 5 10 50 100)
+#group_comm_round_list=(1 5 10 50 100)
 #group_comm_round_list=(2 3 7 20 30 70)
-group_alpha_list=(0.01)
+group_comm_round_list=(0 1)
+group_alpha_list=(1.0 0.1 0.01)
 ######################################################################
 
 WORKER_NUM=$(($GROUP_NUM+1))
@@ -27,7 +32,11 @@ mkdir -p batch_log
 # we need to install yq (https://github.com/mikefarah/yq)
 # sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && sudo chmod +x /usr/bin/yq
 
+if [ "${GROUP_COMM_PATTERN}" != "decentralized" ]; then
+  TOPO_NAME=complete
+fi
 yq -i ".common_args.random_seed = ${RANDOM_SEED}" $CONFIG_PATH
+yq -i ".data_args.partition_alpha = ${PARTITION_ALPHA}" $CONFIG_PATH
 yq -i ".device_args.worker_num = ${WORKER_NUM}" $CONFIG_PATH
 yq -i ".device_args.gpu_mapping_key = \"mapping_config1_${WORKER_NUM}\"" $CONFIG_PATH
 yq -i ".train_args.group_num = ${GROUP_NUM}" $CONFIG_PATH
@@ -68,7 +77,7 @@ do
     & echo $! >> batch_log/process.pid
     sleep 60
   done
-  
+
 done
 
 echo "Finished!"

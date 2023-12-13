@@ -537,6 +537,7 @@ def load_synthetic_data(args):
             train_data_local_dict,
             test_data_local_dict,
             class_num,
+            args.group_indexes
         ) = data_loader(
             args.dataset,
             args.data_cache_dir,
@@ -544,6 +545,8 @@ def load_synthetic_data(args):
             args.partition_alpha,
             args.client_num_in_total,
             args.batch_size,
+            group_num=args.group_num if hasattr(args, "group_num") else 1,
+            group_alpha=args.group_alpha if hasattr(args, "group_alpha") else 0.5
         )
 
     if centralized:

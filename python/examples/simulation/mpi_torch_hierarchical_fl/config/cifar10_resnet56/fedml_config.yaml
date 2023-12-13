@@ -11,8 +11,8 @@ model_args:
 train_args:
   federated_optimizer: "HierarchicalFL"
   client_id_list: "[]"
-  client_num_in_total: 1000
-  client_num_per_round: 90
+  client_num_in_total: 500
+  client_num_per_round: 100
   comm_round: 0
   time_budget: 5000
   epochs: 1
@@ -21,16 +21,16 @@ train_args:
   learning_rate: 0.03
   weight_decay: 0.001
   group_method: "hetero"
-  group_alpha: 0.01
+  group_alpha: 1.0
   group_num: 9
-  group_comm_round: 100
+  group_comm_round: 1
   group_comm_pattern: "decentralized"
-  topo_name: "ring"
+  topo_name: "complete"
   topo_edge_probability: 1.0
   enable_dynamic_topo: false
 ns3_args:
   enable_parameter_estimation: false
-  enable_ns3: true
+  enable_ns3: false
   fast_mode: true
   underlay: 'geantdistance'
   access_link_capacity: 1.0e+7
@@ -51,6 +51,6 @@ tracking_args:
   # When running on MLOps platform(open.fedml.ai), the default log path is at ~/fedml-client/fedml/logs/ and ~/fedml-server/fedml/logs/
   enable_wandb: true
   wandb_key: ee0b5f53d949c84cee7decbe7a629e63fb2f8408
-  wandb_project: tpds-cpfedavg
+  wandb_project: ton-cpfedavg
   run_name: mpi_hierarchical_fl_cifar10_resnet56
   wandb_only_server: true

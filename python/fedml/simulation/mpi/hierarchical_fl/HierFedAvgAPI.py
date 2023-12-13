@@ -193,18 +193,14 @@ def setup_clients(
         group_indexes = np.random.randint(
             0, args.group_num, args.client_num_in_total
         )
-        group_to_client_indexes = {}
-        for client_idx, group_idx in enumerate(group_indexes):
-            if not group_idx in group_to_client_indexes:
-                group_to_client_indexes[group_idx] = []
-            group_to_client_indexes[group_idx].append(client_idx)
     elif args.group_method == "hetero":
-        clients_type_list = analyze_clients_type(train_data_local_dict, class_num,
-                                                 num_type=args.group_num,
-                                                 random_seed=args.random_seed)
-        group_indexes, group_to_client_indexes = hetero_partition_groups(clients_type_list,
-                                                                          args.group_num,
-                                                                          alpha=args.group_alpha)
+        group_indexes = args.group_indexes
+
+    group_to_client_indexes = {}
+    for client_idx, group_idx in enumerate(group_indexes):
+        if not group_idx in group_to_client_indexes:
+            group_to_client_indexes[group_idx] = []
+        group_to_client_indexes[group_idx].append(client_idx)
 
     return group_indexes, group_to_client_indexes
 

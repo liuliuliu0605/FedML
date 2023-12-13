@@ -112,12 +112,13 @@ def load_cifar10_data(datadir, process_id, synthetic_data_url, private_local_dat
     return (X_train, y_train, X_test, y_test, cifar10_train_ds, cifar10_test_ds)
 
 
-def partition_data(dataset, datadir, partition, n_nets, alpha, process_id, synthetic_data_url, private_local_data):
+def partition_data(dataset, datadir, partition, n_nets, alpha, process_id, synthetic_data_url, private_local_data, group_num=1, group_alpha=0.5):
     np.random.seed(10)
     logging.info("*********partition data***************")
     X_train, y_train, X_test, y_test, cifar10_train_ds, cifar10_test_ds = load_cifar10_data(datadir, process_id, synthetic_data_url, private_local_data)
     n_train = X_train.shape[0]
     # n_test = X_test.shape[0]
+    group_indexes = []
 
     if partition == "homo":
         total_num = n_train
@@ -125,7 +126,7 @@ def partition_data(dataset, datadir, partition, n_nets, alpha, process_id, synth
         batch_idxs = np.array_split(idxs, n_nets)
         net_dataidx_map = {i: batch_idxs[i] for i in range(n_nets)}
 
-    elif partition == "hetero":
+    elif partition == "hetero" and group_num <= 1:
         min_size = 0
         K = 10
         N = y_train.shape[0]
@@ -150,6 +151,71 @@ def partition_data(dataset, datadir, partition, n_nets, alpha, process_id, synth
             np.random.shuffle(idx_batch[j])
             net_dataidx_map[j] = idx_batch[j]
 
+    elif partition == "hetero" and group_num > 1:
+        # distribute group data
+        min_size = 0
+        K = 10
+        N = y_train.shape[0]
+        logging.info("N = " + str(N))
+        group_dataidx_map = {}
+
+        while min_size < 10:
+            idx_batch = [[] for _ in range(group_num)]
+            # for each class in the dataset
+            for k in range(K):
+                idx_k = np.where(y_train == k)[0]
+                np.random.shuffle(idx_k)
+                proportions = np.random.dirichlet(np.repeat(group_alpha, group_num))
+                ## Balance
+                proportions = np.array([p * (len(idx_j) < N / group_num) for p, idx_j in zip(proportions, idx_batch)])
+                proportions = proportions / proportions.sum()
+                proportions = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
+                idx_batch = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch, np.split(idx_k, proportions))]
+                min_size = min([len(idx_j) for idx_j in idx_batch])
+
+        for group_id in range(group_num):
+            np.random.shuffle(idx_batch[group_id])
+            group_dataidx_map[group_id] = np.array(idx_batch[group_id])
+
+        # assign number of clients to each group
+        client_num_in_groups = [n_nets * len(group_dataidx_map[group_id]) // N for group_id in range(group_num)]
+        remain_client_num = n_nets - sum(client_num_in_groups)
+        while remain_client_num > 0:
+            client_num_in_groups[remain_client_num - 1] += 1
+            remain_client_num -= 1
+
+        # distribute client data
+        net_dataidx_map = {}
+        client_start_idx = np.cumsum(client_num_in_groups)
+        for group_id in range(group_num):
+
+            min_size = 0
+            n = len(group_dataidx_map[group_id])
+            logging.info("n_{} = {}".format(group_id, n))
+
+            while min_size < 10:
+                idx_batch = [[] for _ in range(client_num_in_groups[group_id])]
+                # for each class in the dataset
+                for k in range(K):
+                    idx_k = np.where(y_train[group_dataidx_map[group_id]] == k)[0]
+                    np.random.shuffle(idx_k)
+                    proportions = np.random.dirichlet(np.repeat(alpha, client_num_in_groups[group_id]))
+                    proportions = np.array([p * (len(idx_j) < n / client_num_in_groups[group_id]) for p, idx_j in zip(proportions, idx_batch)])
+                    proportions = proportions / proportions.sum()
+                    proportions = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
+                    idx_batch = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch, np.split(idx_k, proportions))]
+                    min_size = min([len(idx_j) for idx_j in idx_batch])
+                # print([len(idx_j) for idx_j in idx_batch])
+                # print(client_num_in_groups, client_num_in_groups[group_id], n)
+
+            for j in range(client_num_in_groups[group_id]):
+                np.random.shuffle(idx_batch[j])
+                client_id = j
+                if group_id >= 1:
+                    client_id += client_start_idx[group_id-1]
+                net_dataidx_map[client_id] = group_dataidx_map[group_id][idx_batch[j]]
+                group_indexes.append(group_id)
+
     elif partition == "hetero-fix":
         dataidx_map_file_path = "./data_preprocessing/non-iid-distribution/CIFAR10/net_dataidx_map.txt"
         net_dataidx_map = read_net_dataidx_map(dataidx_map_file_path)
@@ -160,7 +226,7 @@ def partition_data(dataset, datadir, partition, n_nets, alpha, process_id, synth
     else:
         traindata_cls_counts = record_net_data_stats(y_train, net_dataidx_map)
 
-    return X_train, y_train, X_test, y_test, net_dataidx_map, traindata_cls_counts, cifar10_train_ds, cifar10_test_ds
+    return X_train, y_train, X_test, y_test, net_dataidx_map, group_indexes, traindata_cls_counts, cifar10_train_ds, cifar10_test_ds
 
 
 # for centralized training
@@ -248,6 +314,7 @@ def load_partition_data_distributed_cifar10(
         X_test,
         y_test,
         net_dataidx_map,
+        group_indexes,
         traindata_cls_counts,
         cifar10_train_ds,
         cifar10_test_ds,
@@ -317,6 +384,8 @@ def efficient_load_partition_data_cifar10(
     private_local_data="",
     n_proc_in_silo=0,
     data_efficient_load=True,
+    group_num=1,
+    group_alpha=0.5
 ):
     (
         X_train,
@@ -324,10 +393,12 @@ def efficient_load_partition_data_cifar10(
         X_test,
         y_test,
         net_dataidx_map,
+        group_indexes,
         traindata_cls_counts,
         cifar10_train_ds,
         cifar10_test_ds,
-    ) = partition_data(dataset, data_dir, partition_method, client_number, partition_alpha, process_id, synthetic_data_url, private_local_data)
+    ) = partition_data(dataset, data_dir, partition_method, client_number, partition_alpha, process_id, synthetic_data_url, private_local_data,
+                       group_num=group_num, group_alpha=group_alpha)
     class_num = len(np.unique(y_train))
     logging.info("traindata_cls_counts = " + str(traindata_cls_counts))
     train_data_num = sum([len(net_dataidx_map[r]) for r in range(client_number)])
@@ -382,4 +453,5 @@ def efficient_load_partition_data_cifar10(
         train_data_local_dict,
         test_data_local_dict,
         class_num,
+        group_indexes
     )

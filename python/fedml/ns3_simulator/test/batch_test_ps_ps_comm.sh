@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-pattern=rar
+pattern=async-hfl
 underlay=geantdistance
 ps_num=9
 model_size=2401488

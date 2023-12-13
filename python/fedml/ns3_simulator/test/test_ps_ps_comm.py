@@ -46,7 +46,9 @@ topology_manager.generate_custom_topology(args)
 network.read_underlay_graph(underlay_name=underlay)
 
 network.select_edge_pses(ps_num=ps_num, method='mhrw')
+print("Edges: {}".format(network.edge_ps_id_list))
 network.select_cloud_ps(method='centroid')
+print("Cloud: {}".format(network.cloud_id))
 network.connect_pses(topology_manager, enable_optimization=True)
 # network.add_edge(0, 2)
 # network.add_edge(0, 3)
@@ -94,11 +96,13 @@ if time_consuming_matrix is not None:
           (model_size / 1e6,
            np.max(time_consuming_matrix),
            t_b - t_a))
+    print("receive time: {}".format(time_consuming_matrix.max(axis=0)))
 print("-" * 50)
 
 if enable_mpi:
     # destroy mpi if mpi mode
     ns.mpi.MpiInterface.Disable()
+
 
 # if network.system_id == 0:
 #     if pattern == 'pfl' or pattern == 'rar':
@@ -108,6 +112,9 @@ if enable_mpi:
 #             recv_time_list.append(time_consuming_matrix[:, i][neighbour_list].max())
 #         file_name = '%s-%s-ps_%d-topo_%s-model_%d.txt' % (pattern, underlay, ps_num, args.topo_name, model_size)
 #     elif pattern == 'hfl':
+#         recv_time_list = time_consuming_matrix[0, 1:]
+#         file_name = '%s-%s-ps_%d-model_%d.txt' % (pattern, underlay, ps_num, model_size)
+#     elif pattern == 'async-hfl':
 #         recv_time_list = time_consuming_matrix[0, 1:]
 #         file_name = '%s-%s-ps_%d-model_%d.txt' % (pattern, underlay, ps_num, model_size)
 #
