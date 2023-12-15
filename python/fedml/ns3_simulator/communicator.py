@@ -75,6 +75,15 @@ class Communicator:
                 current_time = 0
         return current_time
 
+    def update_rcv_time(self, rcv_time, src=None):
+        # update current time of receiver if fastforward is enabled
+        if src is None:
+            for receiver in self.app_receiver_dict.values():
+               receiver.current_time = rcv_time
+        else:
+            if src in self.app_receiver_dict:
+                self.app_receiver_dict[src] = rcv_time
+
     def finished_or_not(self):
         # finished if and only if senders and receivers all finished
         sender_states = [sender.is_finished for sender in self.app_sender_dict.values()]

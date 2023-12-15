@@ -83,19 +83,23 @@ def time_consuming_one_round(
             delay_matrix, region_delay, global_delay = network.run_fl_pfl(model_size=model_size,
                                                                           group_comm_round=args.group_comm_round,
                                                                           mix_comm_round=1,
-                                                                          start_time=0, stop_time=10000000)
+                                                                          start_time=0, stop_time=10000000,
+                                                                          fast_forward=args.fast_mode)
         elif args.group_comm_pattern == 'centralized':
             delay_matrix, region_delay, global_delay = network.run_fl_hfl(model_size=model_size,
                                                                           group_comm_round=args.group_comm_round,
-                                                                          start_time=0, stop_time=10000000)
+                                                                          start_time=0, stop_time=10000000,
+                                                                          fast_forward=args.fast_mode)
         elif args.group_comm_pattern == 'async-centralized':
             delay_matrix, region_delay, global_delay = network.run_async_fl_hfl(model_size=model_size,
                                                                                 group_comm_round=args.group_comm_round,
-                                                                                start_time=0, stop_time=10000000)
+                                                                                start_time=0, stop_time=10000000,
+                                                                                fast_forward=args.fast_mode)
         elif args.group_comm_pattern == 'allreduce':
             delay_matrix, region_delay, global_delay = network.run_fl_rar(model_size=model_size,
                                                                           group_comm_round=args.group_comm_round,
-                                                                          start_time=0, stop_time=10000000)
+                                                                          start_time=0, stop_time=10000000,
+                                                                          fast_forward=args.fast_mode)
         else:
             raise NotImplementedError
 

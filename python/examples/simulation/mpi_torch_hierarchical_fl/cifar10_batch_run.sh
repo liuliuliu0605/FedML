@@ -1,7 +1,7 @@
 CONFIG_PATH=config/cifar10_resnet56/fedml_config.yaml
 RANDOM_SEED=0
 GROUP_NUM=9
-COMM_ROUND=0
+BASE_COMM_ROUND=0
 TIME_BUDGET=5000
 GROUP_METHOD=hetero
 GROUP_ALPHA=1.0
@@ -13,7 +13,7 @@ CORE_LINK_CAPACITY=1e9
 LAN_CAPACITY=1e11
 LOCAL_UPDATE_TIME=0.07576
 WORKER_NUM=$(($GROUP_NUM+1))
-GPU_UTIL_PARSE=localhost:3,2,3,2
+GPU_UTIL_PARSE=localhost:3,2,2,3
 
 random_seed_list=()
 time_budget_list=()
@@ -23,7 +23,7 @@ group_alpha_list=(10.0 1.0 0.1)
 group_method_list=(random hetero)
 group_comm_pattern_list=(decentralized centralized async-centralized)
 
-group_alpha_list=(10.0 1.0 0.1)
+group_alpha_list=(10)
 group_method_list=(hetero)
 group_comm_pattern_list=(decentralized)
 
@@ -40,6 +40,8 @@ do
       if [ "${GROUP_COMM_PATTERN}" = "decentralized" ]; then
           group_comm_round_list=(0 1)
           topo_name_list=(complete 2d_torus ring star)
+          group_comm_round_list=(1 2 3 5 10)
+          topo_name_list=(ring)
         elif [ "${GROUP_COMM_PATTERN}" = "centralized" ];then
           group_comm_round_list=(4)
           topo_name_list=(complete)
@@ -53,7 +55,11 @@ do
 
         for GROUP_COMM_ROUND in ${group_comm_round_list[@]};
         do
-
+            if [ ${GROUP_COMM_ROUND} = 0 ]; then
+                COMM_ROUND=0
+              else
+                COMM_ROUND=$((BASE_COMM_ROUND/GROUP_COMM_ROUND))
+            fi
             log_file="group_method=$GROUP_METHOD-group_alpha=$GROUP_ALPHA-topo=$TOPO_NAME-group_comm_pattern=$GROUP_COMM_PATTERN-group_comm_round=$GROUP_COMM_ROUND.log"
             echo $log_file
             nohup mpirun -np $WORKER_NUM \
@@ -71,7 +77,7 @@ do
                 & echo $! >> batch_log/process.pid
             #    --enable_ns3
             #    --enable_dynamic_topo
-            sleep 10
+            sleep 30
 
         done
 

@@ -13,6 +13,7 @@ print(args)
 seed=1
 enable_mpi = True if MPI.COMM_WORLD.Get_size() > 1 else False
 verbose = False
+fast_forward = args.fastfoward
 
 if enable_mpi:
     ns.core.GlobalValue.Bind("SimulatorImplementationType", ns.core.StringValue("ns3::DistributedSimulatorImpl"))
@@ -69,19 +70,23 @@ for _ in range(1):
         ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay = network.run_fl_pfl(model_size=model_size,
                                                                             group_comm_round=group_comm_round,
                                                                             mix_comm_round=mix_comm_round,
-                                                                            start_time=0, stop_time=10000000)
+                                                                            start_time=0, stop_time=10000000,
+                                                                            fast_forward=fast_forward)
     elif pattern == 'hfl':
         ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay = network.run_fl_hfl(model_size=model_size,
                                                                             group_comm_round=group_comm_round,
-                                                                            start_time=0, stop_time=10000000)
+                                                                            start_time=0, stop_time=10000000,
+                                                                            fast_forward=fast_forward)
     elif pattern == 'rar':
         ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay = network.run_fl_rar(model_size=model_size,
                                                                             group_comm_round=group_comm_round,
-                                                                            start_time=0, stop_time=10000000)
+                                                                            start_time=0, stop_time=10000000,
+                                                                            fast_forward=fast_forward)
     elif pattern == 'async-hfl':
         ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay = network.run_async_fl_hfl(model_size=model_size,
                                                                                   group_comm_round=group_comm_round,
-                                                                                  start_time=0, stop_time=10000000)
+                                                                                  start_time=0, stop_time=10000000,
+                                                                                  fast_forward=fast_forward)
     t_b = time.time()
 
     time_consuming_matrix = ps_ps_delay_matrix

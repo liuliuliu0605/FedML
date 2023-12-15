@@ -36,18 +36,18 @@ def add_args():
 
     # Training arguments
     parser.add_argument("--random_seed", type=int, default=0)
-    parser.add_argument("--federated_optimizer", type=str, default="HierarchicalFL")
+    # parser.add_argument("--federated_optimizer", type=str, default="HierarchicalFL")
     parser.add_argument("--client_num_in_total", type=int, default=500)
     parser.add_argument("--client_num_per_round", type=int, default=100)
     parser.add_argument("--comm_round", type=int, default=1)
-    parser.add_argument("--time_budget", type=int, default=5000)
-    parser.add_argument("--epochs", type=int, default=1)
-    parser.add_argument("--client_optimizer", type=str, default="sgd")
-    parser.add_argument("--learning_rate", type=float, default=0.3)
-    parser.add_argument("--momentum", type=float, default=0.0)
-    parser.add_argument("--server_optimizer", type=str, default="sgd")
-    parser.add_argument("--server_lr", type=float, default=1.0)
-    parser.add_argument("--server_momentum", type=float, default=0.9)
+    parser.add_argument("--time_budget", type=int, default=1)
+    # parser.add_argument("--epochs", type=int, default=1)
+    # parser.add_argument("--client_optimizer", type=str, default="sgd")
+    # parser.add_argument("--learning_rate", type=float, default=0.03)
+    # parser.add_argument("--momentum", type=float, default=0.0)
+    # parser.add_argument("--server_optimizer", type=str, default="sgd")
+    # parser.add_argument("--server_lr", type=float, default=1.0)
+    # parser.add_argument("--server_momentum", type=float, default=0.9)
     # args, unknown = parser.parse_known_args()
 
     # hierarchical arguments

@@ -786,7 +786,13 @@ class Network:
     def get_history(self, config_param):
         return self.time_history[config_param][-1]
 
-    def run_fl_pfl(self, model_size, group_comm_round=1, mix_comm_round=1, start_time=0, stop_time=10000000):
+    def run_fl_pfl(self, model_size, group_comm_round=1, mix_comm_round=1, start_time=0, stop_time=10000000,
+                   fast_forward=False):
+        virtual_group_comm_round = None
+        if fast_forward and group_comm_round > 1:
+            virtual_group_comm_round = group_comm_round
+            group_comm_round = 1
+
         ps_client_distribution_list, client_ps_aggregation_list = self.set_fl_step(model_size,
                                                                                    start_time=start_time,
                                                                                    stop_time=stop_time,
@@ -797,13 +803,21 @@ class Network:
                                       phases=mix_comm_round,
                                       initial_message=None)
 
-        def ps_receive_model_from_clients(mix_comm):
-            mix_comm.generate_message('hello')
+        def ps_receive_model_from_clients(params):
+            mix_comm, agg_comm, virtual_group_comm_round= params
+            if virtual_group_comm_round is None:
+                mix_comm.generate_message('hello')
+            else:
+                agg_time_in_a_round = agg_comm.get_rcv_time()
+                delay = agg_time_in_a_round * (virtual_group_comm_round-1)
+                agg_comm.update_rcv_time(agg_time_in_a_round * virtual_group_comm_round)
+                mix_comm.generate_message('hello', delay=delay)
 
         for i in range(self.edge_ps_num):
             ps_agg_communicator = client_ps_aggregation_list[i].communicator_list[0]  # index 0 refers to ps communicator
             ps_mix_communicator = ps_ps_mix.communicator_list[i]
-            ps_agg_communicator.register_finish_callback(ps_receive_model_from_clients, ps_mix_communicator)
+            ps_agg_communicator.register_finish_callback(ps_receive_model_from_clients,
+                                                         params=(ps_mix_communicator, ps_agg_communicator, virtual_group_comm_round))
 
         start_of_simulation = ns.core.Simulator.Now().GetSeconds()
         ns.core.Simulator.Run()
@@ -820,7 +834,11 @@ class Network:
 
         return ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay
 
-    def run_fl_hfl(self, model_size, group_comm_round=1, start_time=0, stop_time=10000000):
+    def run_fl_hfl(self, model_size, group_comm_round=1, start_time=0, stop_time=10000000, fast_forward=False):
+        virtual_group_comm_round = None
+        if fast_forward and group_comm_round > 1:
+            virtual_group_comm_round = group_comm_round
+            group_comm_round = 1
         ps_client_distribution_list, client_ps_aggregation_list = self.set_fl_step(model_size,
                                                                                    start_time=start_time,
                                                                                    stop_time=stop_time,
@@ -831,14 +849,21 @@ class Network:
                                                                             initial_message=None)
 
         # edge server receives models from clients ps, aggregate then and send to cloud ps
-        def ps_receive_model_from_clients(mix_comm):
-            mix_comm.generate_message('hello')
+        def ps_receive_model_from_clients(params):
+            global_comm, partial_comm, virtual_group_comm_round= params
+            if virtual_group_comm_round is None:
+                global_comm.generate_message('hello')
+            else:
+                agg_time_in_a_round = partial_comm.get_rcv_time()
+                delay = agg_time_in_a_round * (virtual_group_comm_round-1)
+                partial_comm.update_rcv_time(agg_time_in_a_round * virtual_group_comm_round)
+                global_comm.generate_message('hello', delay=delay)
 
         for i in range(self.edge_ps_num):
             ps_partial_agg_communicator = client_ps_aggregation_list[i].communicator_list[0] # index 0 refers to ps communicator
             ps_global_agg_communicator = edge_cloud_aggregation.communicator_list[i+1]
             ps_partial_agg_communicator.register_finish_callback(ps_receive_model_from_clients,
-                                                                 ps_global_agg_communicator)
+                                                                 params= (ps_global_agg_communicator, ps_partial_agg_communicator, virtual_group_comm_round))
 
         start_of_simulation = ns.core.Simulator.Now().GetSeconds()
         ns.core.Simulator.Run()
@@ -855,7 +880,11 @@ class Network:
             [ps_ps_delay_matrix[:, i+1].max() - ps_partial_agg_delay[i] for i in range(self.edge_ps_num)])
         return ps_ps_delay_matrix, ps_partial_agg_delay, ps_global_agg_delay
 
-    def run_async_fl_hfl(self, model_size, group_comm_round=1, start_time=0, stop_time=10000000):
+    def run_async_fl_hfl(self, model_size, group_comm_round=1, start_time=0, stop_time=10000000, fast_forward=False):
+        virtual_group_comm_round = None
+        if fast_forward and group_comm_round > 1:
+            virtual_group_comm_round = group_comm_round
+            group_comm_round = 1
         ps_client_distribution_list, client_ps_aggregation_list = self.set_fl_step(model_size,
                                                                                    start_time=start_time,
                                                                                    stop_time=stop_time,
@@ -866,14 +895,21 @@ class Network:
                                                                                             initial_message=None)
 
         # edge server receives models from clients ps, aggregate then and send to cloud ps
-        def ps_receive_model_from_clients(mix_comm):
-            mix_comm.generate_message('hello')
+        def ps_receive_model_from_clients(params):
+            global_comm, partial_comm, virtual_group_comm_round = params
+            if virtual_group_comm_round is None:
+                global_comm.generate_message('hello')
+            else:
+                agg_time_in_a_round = partial_comm.get_rcv_time()
+                delay = agg_time_in_a_round * (virtual_group_comm_round - 1)
+                partial_comm.update_rcv_time(agg_time_in_a_round * virtual_group_comm_round)
+                global_comm.generate_message('hello', delay=delay)
 
         for i in range(self.edge_ps_num):
             ps_partial_agg_communicator = client_ps_aggregation_list[i].communicator_list[0] # index 0 refers to ps communicator
             ps_global_agg_communicator = edge_cloud_aggregation_list[i].communicator_list[1]
             ps_partial_agg_communicator.register_finish_callback(ps_receive_model_from_clients,
-                                                                 ps_global_agg_communicator)
+                                                                 params= (ps_global_agg_communicator, ps_partial_agg_communicator, virtual_group_comm_round))
 
         start_of_simulation = ns.core.Simulator.Now().GetSeconds()
         ns.core.Simulator.Run()
@@ -895,7 +931,11 @@ class Network:
 
         return ps_ps_delay_matrix, ps_partial_agg_delay, ps_global_agg_delay
 
-    def run_fl_rar(self, model_size, group_comm_round=1, start_time=0, stop_time=10000000):
+    def run_fl_rar(self, model_size, group_comm_round=1, start_time=0, stop_time=10000000, fast_forward=False):
+        virtual_group_comm_round = None
+        if fast_forward and group_comm_round > 1:
+            virtual_group_comm_round = group_comm_round
+            group_comm_round = 1
         ps_client_distribution_list, client_ps_aggregation_list = self.set_fl_step(model_size,
                                                                                    start_time=start_time,
                                                                                    stop_time=stop_time,
@@ -906,13 +946,21 @@ class Network:
                                       phases=2*(self.edge_ps_num -1),
                                       initial_message=None)
 
-        def ps_receive_model_from_clients(mix_comm):
-            mix_comm.generate_message('hello')
+        def ps_receive_model_from_clients(params):
+            ps_mix_communicator, ps_agg_communicator, virtual_group_comm_round = params
+            if virtual_group_comm_round is None:
+                ps_mix_communicator.generate_message('hello')
+            else:
+                agg_time_in_a_round = ps_agg_communicator.get_rcv_time()
+                delay = agg_time_in_a_round * (virtual_group_comm_round - 1)
+                ps_agg_communicator.update_rcv_time(agg_time_in_a_round * virtual_group_comm_round)
+                ps_mix_communicator.generate_message('hello', delay=delay)
 
         for i in range(self.edge_ps_num):
             ps_agg_communicator = client_ps_aggregation_list[i].communicator_list[0]  # index 0 refers to ps communicator
             ps_mix_communicator = ps_ps_mix.communicator_list[i]
-            ps_agg_communicator.register_finish_callback(ps_receive_model_from_clients, ps_mix_communicator)
+            ps_agg_communicator.register_finish_callback(ps_receive_model_from_clients,
+                                                         params=(ps_mix_communicator, ps_agg_communicator, virtual_group_comm_round))
 
         start_of_simulation = ns.core.Simulator.Now().GetSeconds()
         ns.core.Simulator.Run()
