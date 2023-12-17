@@ -4,6 +4,7 @@ import fedml
 import os
 from fedml import FedMLRunner
 from fedml.arguments import Arguments
+from fedml.model.cv.resnet import resnet20
 
 
 def add_args():
@@ -37,8 +38,9 @@ def add_args():
     # Training arguments
     parser.add_argument("--random_seed", type=int, default=0)
     # parser.add_argument("--federated_optimizer", type=str, default="HierarchicalFL")
-    parser.add_argument("--client_num_in_total", type=int, default=500)
-    parser.add_argument("--client_num_per_round", type=int, default=100)
+    # parser.add_argument("--client_num_in_total", type=int, default=1000)
+    # parser.add_argument("--client_num_per_round", type=int, default=1000)
+    parser.add_argument("--partition_alpha", type=float, default=0.5)
     parser.add_argument("--comm_round", type=int, default=1)
     parser.add_argument("--time_budget", type=int, default=1)
     # parser.add_argument("--epochs", type=int, default=1)
@@ -53,7 +55,7 @@ def add_args():
     # hierarchical arguments
     parser.add_argument("--group_num", type=int, default=9)
     parser.add_argument("--group_method", type=str, default="hetero")
-    parser.add_argument("--group_alpha", type=float, default=1.0)
+    parser.add_argument("--group_alpha", type=float, default=10.0)
     parser.add_argument("--topo_name", type=str, default="complete")
     parser.add_argument("--group_comm_pattern", type=str, default="decentralized")
     parser.add_argument("--group_comm_round", type=int, default=1)
@@ -110,7 +112,12 @@ if __name__ == "__main__":
     dataset, output_dim = fedml.data.load(args)
 
     # load model
-    model = fedml.model.create(args, output_dim)
+
+    # load model (the size of MNIST image is 28 x 28)
+    if args.model == "resnet20":
+        model = resnet20(class_num=output_dim)
+    else:
+        model = fedml.model.create(args, output_dim)
 
     # start training
     fedml_runner = FedMLRunner(args, device, dataset, model)

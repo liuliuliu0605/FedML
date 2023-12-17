@@ -46,7 +46,7 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         global_model_params = msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS)
         total_client_indexes = msg_params.get(MyMessage.MSG_ARG_KEY_TOTAL_EDGE_CLIENTS)
         sampled_client_indexes = msg_params.get(MyMessage.MSG_ARG_KEY_SAMPLED_EDGE_CLIENTS)
-        total_sampled_data_size = msg_params.get(MyMessage.MSG_ARG_KEY_TOTAL_SAMPLED_DATA_SIZE)
+        group_to_data_size = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_TO_DATA_SIZE)
         edge_index = msg_params.get(MyMessage.MSG_ARG_KEY_EDGE_INDEX)
         topology_manager = msg_params.get(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER)
         group_comm_round = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND)
@@ -81,7 +81,7 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         w_group_list, sample_num_list, param_estimation_dict = self.group.train(self.args.round_idx,
                                                                                 global_model_params,
                                                                                 sampled_client_indexes[edge_index],
-                                                                                total_sampled_data_size,
+                                                                                group_to_data_size,
                                                                                 is_estimate)
 
         self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
@@ -89,7 +89,7 @@ class HierFedAVGEdgeManager(FedMLCommManager):
     def handle_message_receive_model_from_cloud(self, msg_params):
         logging.info("handle_message_receive_model_from_cloud.")
         sampled_client_indexes = msg_params.get(MyMessage.MSG_ARG_KEY_SAMPLED_EDGE_CLIENTS)
-        total_sampled_data_size = msg_params.get(MyMessage.MSG_ARG_KEY_TOTAL_SAMPLED_DATA_SIZE)
+        group_to_data_size = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_TO_DATA_SIZE)
         global_model_params = msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS)
         edge_index = msg_params.get(MyMessage.MSG_ARG_KEY_EDGE_INDEX)
         # topology_manager = msg_params.get(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER)
@@ -127,11 +127,12 @@ class HierFedAVGEdgeManager(FedMLCommManager):
 
         # if global_model_params is None, edge will not train in this round
         if global_model_params is None:
+            # async mode may fall in the case
             self.send_model_to_cloud(0, None, None, None)
         else:
             w_group_list, sample_num_list, param_estimation_dict = \
                 self.group.train(self.args.round_idx, global_model_params, sampled_client_indexes[edge_index],
-                                 total_sampled_data_size, is_estimate)
+                                 group_to_data_size, is_estimate)
             self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
 
         if 0 < self.num_rounds <= self.args.round_idx or \

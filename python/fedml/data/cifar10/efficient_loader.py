@@ -159,7 +159,7 @@ def partition_data(dataset, datadir, partition, n_nets, alpha, process_id, synth
         logging.info("N = " + str(N))
         group_dataidx_map = {}
 
-        while min_size < 10:
+        while min_size < 1000:
             idx_batch = [[] for _ in range(group_num)]
             # for each class in the dataset
             for k in range(K):

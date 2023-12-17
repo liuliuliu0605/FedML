@@ -50,6 +50,9 @@ class HierFedAVGCloudAggregator(object):
             self.num_of_partial_updates = [0 for i in range(self.worker_num)]
             self.init_model_params = copy.deepcopy(self.get_global_model_params())
 
+        # used when ns3 simulator is enabled
+        self.args.time_for_test = 0
+
     def get_global_model_params(self):
         return self.aggregator.get_model_params()
 
@@ -86,26 +89,13 @@ class HierFedAVGCloudAggregator(object):
             global_round_idx = self.model_dict[0][group_round_idx][0]
 
             for idx in range(0, self.worker_num):
-                model_list.append((1, self.model_dict[idx][group_round_idx][1]))
-                # model_list.append((self.sample_num_dict[idx][group_round_idx],
-                #                    self.model_dict[idx][group_round_idx][1]))
+                model_list.append((self.sample_num_dict[idx][group_round_idx],
+                                   self.model_dict[idx][group_round_idx][1]))
 
-            averaged_params = self._fedavg_aggregation_(model_list)
+            # averaged_params = self._fedavg_aggregation_(model_list)
+            averaged_params = self._fedavg_noniid_aggregation_(model_list)
             self.set_global_model_params(averaged_params)
             self.test_on_cloud_for_all_clients(global_round_idx)
-
-        if FedMLAttacker.get_instance().is_model_attack():
-            model_list = FedMLAttacker.get_instance().attack_model(raw_client_grad_list=model_list, extra_auxiliary_info=None)
-
-        if FedMLDefender.get_instance().is_defense_enabled():
-            # todo: update extra_auxiliary_info according to defense type
-            averaged_params = FedMLDefender.get_instance().defend(
-                raw_client_grad_list=model_list,
-                base_aggregation_func=self._fedavg_aggregation_,
-                extra_auxiliary_info=self.get_global_model_params(),
-            )
-        else:
-            averaged_params = self._fedavg_aggregation_(model_list)
 
         # update the global model which is cached in the cloud
         self.set_global_model_params(averaged_params)
@@ -123,16 +113,16 @@ class HierFedAVGCloudAggregator(object):
             for idx in range(0, self.worker_num):
                 model_list.append((1, self.model_dict[idx][group_round_idx][1]))
 
-            mixed_params_list = []
-            for idx in range(self.worker_num):
-                mixed_params_list.append((1, self._pfedavg_mixing_(model_list,
-                                                                   topology_manager.get_in_neighbor_weights(idx))))
-
-            averaged_params = self._fedavg_aggregation_(mixed_params_list)
+            # averaged_params = self._fedavg_aggregation_(model_list)
+            averaged_params = self._fedavg_noniid_aggregation_(model_list)
             self.set_global_model_params(averaged_params)
             self.test_on_cloud_for_all_clients(global_round_idx)
 
-        return [mixed_params for _, mixed_params in mixed_params_list]
+        mixed_params_list = []
+        for idx in range(self.worker_num):
+            mixed_params_list.append(self._pfedavg_mixing_(model_list, topology_manager.get_in_neighbor_weights(idx)))
+
+        return mixed_params_list
 
     def async_aggregate(self, index):
         group_comm_round = len(self.sample_num_dict[index])
@@ -154,6 +144,7 @@ class HierFedAVGCloudAggregator(object):
                     model = self.model_dict[idx][group_round_idx][1]
                 model_list.append((weight_list[idx], model))
 
+            # the weight is determined by the speed of edge servers
             averaged_params = self._fedavg_aggregation_(model_list)
             self.set_global_model_params(averaged_params)
             self.test_on_cloud_for_all_clients(global_round_idx)
@@ -182,10 +173,24 @@ class HierFedAVGCloudAggregator(object):
                     )
         return averaged_params
 
-    def _pfedavg_mixing_(self, model_list, neighbor_topo_weight_list):
+    def _fedavg_noniid_aggregation_(self, model_list):
+        averaged_params = copy.deepcopy(model_list[-1][1])
 
-        (num0, averaged_params) = model_list[0]
-        averaged_params = copy.deepcopy(averaged_params)
+        for k in averaged_params.keys():
+            for i in range(0, len(model_list)):
+                local_sample_number, local_model_params = model_list[i]
+                if i == 0:
+                    averaged_params[k] = (
+                        copy.deepcopy(local_model_params[k]) / len(model_list)
+                    )
+                else:
+                    averaged_params[k] += (
+                        local_model_params[k] / len(model_list)
+                    )
+        return averaged_params
+
+    def _pfedavg_mixing_(self, model_list, neighbor_topo_weight_list):
+        averaged_params = copy.deepcopy(model_list[-1][1])
 
         for k in averaged_params.keys():
             for i in range(0, len(model_list)):
@@ -193,7 +198,7 @@ class HierFedAVGCloudAggregator(object):
                 topo_weight = neighbor_topo_weight_list[i]
                 if i == 0:
                     averaged_params[k] = (
-                            local_model_params[k] * topo_weight
+                            copy.deepcopy(local_model_params[k]) * topo_weight
                     )
                 else:
                     averaged_params[k] += (
@@ -231,7 +236,7 @@ class HierFedAVGCloudAggregator(object):
         else:
             return self.test_global
 
-    def test_on_cloud_for_all_clients(self, global_round_idx):
+    def test_on_cloud_for_all_clients2(self, global_round_idx):
         if self.aggregator.test_all(
             self.train_data_local_dict,
             self.test_data_local_dict,
@@ -250,7 +255,6 @@ class HierFedAVGCloudAggregator(object):
 
             # We may want to test the intermediate results of partial aggregated models, so we play a trick and let
             # args.round_idx be total number of partial aggregated times
-
             round_idx = self.args.round_idx
             self.args.round_idx = global_round_idx
 
@@ -267,3 +271,58 @@ class HierFedAVGCloudAggregator(object):
                 wandb.log({"Test/Loss": metric_result_in_current_round[1], "time": self.args.ns3_time})
 
             logging.info("metric_result_in_current_round = {}".format(metric_result_in_current_round))
+
+    def test_on_cloud_for_all_clients(self, global_round_idx):
+        if (
+                (
+                        not self.args.enable_ns3 and
+                        (
+                                global_round_idx == self.args.comm_round * self.args.group_comm_round - 1
+                                or global_round_idx % self.args.frequency_of_the_test == 0
+                        )
+                )
+                or
+                (
+                        self.args.enable_ns3 and
+                        (
+                                self.args.ns3_time >= self.args.time_for_test
+                                or 0 < self.args.time_budget <= self.args.ns3_time
+                        )
+                )
+
+        ):
+            self.args.time_for_test += self.args.time_span_of_the_test
+            logging.info("################test_on_cloud_for_all_clients : {}".format(global_round_idx))
+
+            # test data
+            test_num_samples = []
+            test_tot_corrects = []
+            test_losses = []
+
+            if global_round_idx == self.args.comm_round - 1:
+                metrics = self.aggregator._test(self.test_global, self.device, self.args)
+            else:
+                metrics = self.aggregator._test(self.val_global, self.device, self.args)
+
+            test_tot_correct, test_num_sample, test_loss = (
+                metrics["test_correct"],
+                metrics["test_total"],
+                metrics["test_loss"],
+            )
+            test_tot_corrects.append(copy.deepcopy(test_tot_correct))
+            test_num_samples.append(copy.deepcopy(test_num_sample))
+            test_losses.append(copy.deepcopy(test_loss))
+
+            # test on test dataset
+            test_acc = sum(test_tot_corrects) / sum(test_num_samples)
+            test_loss = sum(test_losses) / sum(test_num_samples)
+
+            stats = {"test_acc": test_acc, "test_loss": test_loss}
+            logging.info(stats)
+
+            if self.args.enable_wandb:
+                wandb.log({"Test/Acc": test_acc, "round": global_round_idx})
+                wandb.log({"Test/Loss": test_loss, "round": global_round_idx})
+                if self.args.enable_ns3:
+                    wandb.log({"Test/Acc": test_acc, "time": self.args.ns3_time})
+                    wandb.log({"Test/Loss": test_loss, "time": self.args.ns3_time})

@@ -48,14 +48,12 @@ class HierGroup(FedAvgAPI):
             self.group_sample_number += self.train_data_local_num_dict[client_idx]
         return self.group_sample_number
 
-    def train(self, round_idx=0, w=None, sampled_client_indexes=None, total_sampled_data_size=0, is_estimate=False):
+    def train(self, round_idx=0, w=None, sampled_client_indexes=None, group_to_data_size=None, is_estimate=False):
         if is_estimate:
             param_estimation_dict = self._estimate(w, sampled_client_indexes)
         else:
             param_estimation_dict = {}
 
-        sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes]
-        group_sampled_data_size = sum([client.local_sample_number for client in sampled_client_list])
         w_group = w
         w_group_list = []
         sample_num_list = []
@@ -68,31 +66,31 @@ class HierGroup(FedAvgAPI):
                     + group_round_idx
             )
             # train each client
+            sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes[group_round_idx]]
             for client in sampled_client_list:
-                if total_sampled_data_size > 0:
-                    # scaled_loss_factor = (
-                    #         self.args.group_num * len(sampled_client_list)
-                    #         * client.local_sample_number / total_sampled_data_size
-                    # )
+                if group_to_data_size is not None:
+                    # TODO: how to aggregate model between PSes in case of non-iid data
                     scaled_loss_factor = (
-                            self.args.group_num * group_sampled_data_size / total_sampled_data_size
+                            self.args.group_num * group_to_data_size[self.idx] / sum(group_to_data_size.values())
                     )
+                    scaled_loss_factor = 1
                     w_local = client.train(w_group, scaled_loss_factor)
                 else:
                     w_local = client.train(w_group)
                 w_locals.append((client.get_sample_number(), w_local))
 
             # aggregate local weights
+            # TODO: debug
             # w_group_list.append((global_round_idx, self._aggregate_noniid_avg(w_locals)))
             w_group_list.append((global_round_idx, self._aggregate(w_locals)))
-            sample_num_list.append(self.get_sample_number(sampled_client_indexes))
+            sample_num_list.append(self.get_sample_number(sampled_client_indexes[group_round_idx]))
 
             # update the group weight
             w_group = w_group_list[-1][1]
         return w_group_list, sample_num_list, param_estimation_dict
 
     def _estimate(self, w, sampled_client_indexes):
-        sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes]
+        sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes[0]]
         w_group = w
         param_estimation_dict = {}
         for idx, client in enumerate(sampled_client_list):

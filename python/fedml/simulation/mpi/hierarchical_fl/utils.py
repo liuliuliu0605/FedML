@@ -13,6 +13,63 @@ from ns import ns
 from PIL import Image
 
 
+def calculate_optimal_tau(args, convergence_param_dict, time_dict, p):
+    loss_delta = convergence_param_dict['loss']
+    L = convergence_param_dict['L']
+    sigma = convergence_param_dict['sigma']
+    gamma = convergence_param_dict['gamma']
+    psi = convergence_param_dict['psi']
+    K = convergence_param_dict['K']
+    zeta = convergence_param_dict['zeta']
+    N = convergence_param_dict['N']
+    N_tilde = convergence_param_dict['N_tilde']
+    n = convergence_param_dict['n']
+    n_tilde = convergence_param_dict['n_tilde']
+    avgN_minN = convergence_param_dict['avgN_minN']
+
+    agg_cost = time_dict['agg_cost']
+    mix_cost = time_dict['mix_cost']
+    U = time_dict['budget']
+
+    def h(tau):
+        a1 = 16 * L * loss_delta / sqrt(K*n_tilde) \
+             + 8 * sigma * zeta / sqrt(K*n_tilde) \
+             + 24 * L * N * (N-n) * sqrt(n_tilde) * (sigma + 18 * K *gamma) / (N-1) /n / sqrt(K) * zeta \
+             + avgN_minN * 432 * sqrt(K) * (N - n) * sqrt(n_tilde) * psi / (N-1) / n * zeta
+        a2 = 24 * n_tilde* (sigma + 18 * K * gamma) * zeta
+        a3 = 768 * n_tilde * sigma * zeta
+        a4 = 768 * 16 * n_tilde * K * psi * zeta
+
+        d_agg = agg_cost
+        d_mix = mix_cost
+
+        phi = (tau * d_agg + d_mix) / U / tau
+
+        A = a1 * sqrt(phi)
+        B = phi * (a2 + a3 * tau / p + a4 * tau**2 / p**2)
+        H = A + B
+
+        return H
+
+    opt_tau = 1
+    opt_value = sys.maxsize
+    for tau in range(1, 1001):
+        h_value = h(tau)
+        if h_value < opt_value:
+            opt_tau = tau
+            opt_value = h_value
+
+    if args.enable_wandb:
+        wandb.log({"Estimation/tau": opt_tau, "comm_round": args.round_idx})
+        wandb.log({"Estimation/objective": opt_value, "comm_round": args.round_idx})
+
+    logging.info(
+        "convergence_param_dict={}, time_dict={}, p={}, opt_tau={}".format(convergence_param_dict, time_dict, p, opt_tau)
+    )
+
+    return opt_tau, opt_value
+
+
 def adjust_topo(args, topo_action_objective_list, network):
     # 1 refers to add and -1 refers to remove
     action = 1
@@ -59,7 +116,7 @@ def adjust_topo(args, topo_action_objective_list, network):
 
 
 def time_consuming_one_round(
-        args, process_id, mpi_comm, network, sampled_client_indexes, model_size, system_id_list
+        args, process_id, mpi_comm, network, sampled_group_to_client_indexes, model_size, system_id_list
 ):
     config_param = "{}-{}-{}".format(args.group_comm_pattern, args.group_comm_round,
                                      network.topology_manager.topology if network.topology_manager is not None else 'none')
@@ -71,7 +128,7 @@ def time_consuming_one_round(
         logging.info("Rank {} is running ns3 simulator".format(process_id))
         # network.connect_pses(topology_manager, enable_optimization=True)
 
-        client_num_list = [len(sampled_client_indexes[i]) for i in range(args.group_num)]
+        client_num_list = [len(sampled_group_to_client_indexes[i][0]) for i in range(args.group_num)]
         network.select_clients(client_num_list, method='near_edge_ps')
 
         comm = ns.cppyy.gbl.Convert2MPIComm(mpi_comm)
@@ -150,7 +207,6 @@ def agg_parameter_estimation(args, param_estimation_dict, var_name, log_wandb=Fa
                 var -= (agg_param_estimation[name] ** 2).sum()
 
             agg_param_estimation_dict[var_name] = var
-            # if var_name == 'gamma':
             agg_param_estimation_dict['grad'] = agg_param_estimation
         elif k == 'cum_grad_delta':
             agg_param_estimation = {}
@@ -230,62 +286,6 @@ def stats_group(group_to_client_indexes, train_data_local_dict, train_data_local
                   )
 
 
-def hetero_partition_groups(clients_type_list, num_groups, alpha=0.5):
-    min_size = 0
-    num_type = np.unique(clients_type_list).size
-    N = len(clients_type_list)
-    group_to_client_indexes = {}
-    while min_size < 10:
-        idx_batch = [[] for _ in range(num_groups)]
-        # for each type in clients
-        for k in range(num_type):
-            idx_k = np.where(np.array(clients_type_list) == k)[0]
-            np.random.shuffle(idx_k)
-            proportions = np.random.dirichlet(np.repeat(alpha, num_groups))
-            ## Balance
-            proportions = np.array([p * (len(idx_j) < N / num_groups) for p, idx_j in zip(proportions, idx_batch)])
-            proportions = proportions / proportions.sum()
-            proportions = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
-            idx_batch = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch, np.split(idx_k, proportions))]
-            min_size = min([len(idx_j) for idx_j in idx_batch])
-
-    group_indexes = [0 for _ in range(N)]
-    for j in range(num_groups):
-        np.random.shuffle(idx_batch[j])
-        group_to_client_indexes[j] = idx_batch[j]
-        for client_id in group_to_client_indexes[j]:
-            group_indexes[client_id] = j
-
-    return group_indexes, group_to_client_indexes
-
-
-def analyze_clients_type(train_data_local_dict, class_num, num_type=5, random_seed=0):
-    client_feature_list = []
-    for i in range(len(train_data_local_dict)):
-        y_train = torch.concat([y for _, y in train_data_local_dict[i]])
-        labels, counts = torch.unique(y_train, return_counts=True)
-        data_feature = np.zeros(class_num)
-        total = 0
-        for label, count in zip(labels, counts):
-            data_feature[label.item()] = count.item()
-            total += count.item()
-        data_feature /= total
-        client_feature_list.append(data_feature)
-
-    kmeans = KMeans(n_clusters=num_type, random_state=random_seed).fit(client_feature_list)
-
-    # for k in range(num_type):
-    #     tmp = []
-    #     for i, j in enumerate(kmeans.labels_):
-    #         if j == k:
-    #             indexes = np.where(np.array(client_feature_list[i]) > 0)
-    #             tmp.extend(indexes[0].tolist())
-    #     print(np.unique(tmp))
-    #
-    # exit(0)
-    return kmeans.labels_
-
-
 def transform_list_to_tensor(model_params_list):
     for k in model_params_list.keys():
         model_params_list[k] = torch.from_numpy(
@@ -309,60 +309,8 @@ def post_complete_message_to_sweep_process(args):
 
     with os.fdopen(pipe_fd, "w") as pipe:
         pipe.write("training is finished!!!! \n%s\n" % (str(args)))
-    time.sleep(3)
-
-
-def calculate_optimal_tau(args, convergence_param_dict, time_dict, p):
-    loss_delta = convergence_param_dict['loss']
-    L = convergence_param_dict['L']
-    sigma = convergence_param_dict['sigma']
-    gamma = convergence_param_dict['gamma']
-    psi = convergence_param_dict['psi']
-    K = convergence_param_dict['K']
-    zeta = convergence_param_dict['zeta']
-    N = convergence_param_dict['N']
-    N_tilde = convergence_param_dict['N_tilde']
-    n = convergence_param_dict['n']
-    n_tilde = convergence_param_dict['n_tilde']
-    avgN_minN = convergence_param_dict['avgN_minN']
-
-    agg_cost = time_dict['agg_cost']
-    mix_cost = time_dict['mix_cost']
-    U = time_dict['budget']
-
-    def h(tau):
-        a1 = 16 * L * loss_delta / sqrt(K*n_tilde) \
-             + 8 * sigma * zeta / sqrt(K*n_tilde) \
-             + 24 * L * N * (N-n) * sqrt(n_tilde) * (sigma + 18 * K *gamma) / (N-1) /n / sqrt(K) * zeta \
-             + avgN_minN * 432 * sqrt(K) * (N - n) * sqrt(n_tilde) * psi / (N-1) / n * zeta
-        a2 = 24 * n_tilde* (sigma + 18 * K * gamma) * zeta
-        a3 = 768 * n_tilde * sigma * zeta
-        a4 = 768 * 16 * n_tilde * K * psi * zeta
-
-        d_agg = agg_cost
-        d_mix = mix_cost
-
-        phi = (tau * d_agg + d_mix) / U / tau
-
-        A = a1 * sqrt(phi)
-        B = phi * (a2 + a3 * tau / p + a4 * tau**2 / p**2)
-        H = A + B
-
-        return H
-
-    opt_tau = 1
-    opt_value = sys.maxsize
-    for tau in range(1, 1001):
-        h_value = h(tau)
-        if h_value < opt_value:
-            opt_tau = tau
-            opt_value = h_value
-
-    if args.enable_wandb:
-        wandb.log({"Estimation/tau": opt_tau, "comm_round": args.round_idx})
-        wandb.log({"Estimation/objective": opt_value, "comm_round": args.round_idx})
-
-    return opt_tau, opt_value
+    # waiting for the results to be uploaded
+    time.sleep(20)
 
 
 # def adjust_topo2(tau, network, loss_delta, K, L, sigma, gamma, psi, U, N_tilde, total_params):

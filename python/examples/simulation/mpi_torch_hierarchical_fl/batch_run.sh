@@ -11,7 +11,7 @@ TIME_BUDGET=5000
 #TIME_BUDGET=0
 TOPO_NAME=ring
 GROUP_COMM_PATTERN=decentralized
-CONFIG_PATH=config/cifar10_resnet56/fedml_config.yaml
+CONFIG_PATH=config/cifar10_resnet20/fedml_config.yaml
 #CONFIG_PATH=config/cifar100_mobilenet_v3/fedml_config.yaml
 
 ENABLE_DYNAMIC_TOPO=false

@@ -2,7 +2,7 @@ from .HierFedAvgCloudAggregator import HierFedAVGCloudAggregator
 from .HierFedAvgCloudManager import HierFedAVGCloudManager
 from .HierFedAvgEdgeManager import HierFedAVGEdgeManager
 from .HierGroup import HierGroup
-from .utils import analyze_clients_type, hetero_partition_groups, stats_group
+from .utils import stats_group
 from ....core import ClientTrainer, ServerAggregator
 from ....core.dp.fedml_differential_privacy import FedMLDifferentialPrivacy
 from ....core.security.fedml_attacker import FedMLAttacker
