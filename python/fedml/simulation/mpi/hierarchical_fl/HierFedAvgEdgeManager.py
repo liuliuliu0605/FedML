@@ -80,7 +80,7 @@ class HierFedAVGEdgeManager(FedMLCommManager):
             is_estimate = True
         w_group_list, sample_num_list, param_estimation_dict = self.group.train(self.args.round_idx,
                                                                                 global_model_params,
-                                                                                sampled_client_indexes[edge_index],
+                                                                                sampled_client_indexes,
                                                                                 group_to_data_size,
                                                                                 is_estimate)
 
@@ -131,7 +131,7 @@ class HierFedAVGEdgeManager(FedMLCommManager):
             self.send_model_to_cloud(0, None, None, None)
         else:
             w_group_list, sample_num_list, param_estimation_dict = \
-                self.group.train(self.args.round_idx, global_model_params, sampled_client_indexes[edge_index],
+                self.group.train(self.args.round_idx, global_model_params, sampled_client_indexes,
                                  group_to_data_size, is_estimate)
             self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
 

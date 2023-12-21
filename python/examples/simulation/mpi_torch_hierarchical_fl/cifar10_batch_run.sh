@@ -21,8 +21,8 @@ random_seed_list=()
 time_budget_list=()
 access_link_capacity_list=()
 core_link_capacity=()
-partition_alpha_list=(50 10 0.5)
-group_alpha_list=(0.1 0.5 10)
+partition_alpha_list=(50 5 0.5)
+group_alpha_list=(0.05 0.5 5)
 alpha_index_list=(0 1 2)
 group_method_list=(random hetero)
 group_comm_pattern_list=(decentralized centralized async-centralized)
@@ -30,9 +30,9 @@ group_comm_pattern_list=(decentralized centralized async-centralized)
 
 group_method_list=(hetero)
 group_comm_pattern_list=(decentralized)
-alpha_index_list=(1)
+alpha_index_list=(0)
 
-
+#sleep 15000
 for GROUP_METHOD in ${group_method_list[@]};
 do
 
