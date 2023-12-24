@@ -15,7 +15,7 @@ train_args:
   client_num_per_round: 100
   comm_round: 0
   time_budget: 5000
-  epochs: 5
+  epochs: 10
   batch_size: 10
   client_optimizer: sgd
   learning_rate: 0.1
@@ -34,12 +34,12 @@ ns3_args:
   fast_mode: true
   underlay: 'geantdistance'
   access_link_capacity: 1.0e+7
-  core_link_capacity: 1.0e+9
+  core_link_capacity: 1.0e+10
   lan_capacity: 1.0e+11
-  local_update_time: 0.07576
+  local_update_time: 0.275
 validation_args:
-  frequency_of_the_test: 20
-  time_span_of_the_test: 100
+  frequency_of_the_test: 10
+  time_span_of_the_test: 20
 device_args:
   worker_num: 10
   using_gpu: true
@@ -52,6 +52,6 @@ tracking_args:
   # When running on MLOps platform(open.fedml.ai), the default log path is at ~/fedml-client/fedml/logs/ and ~/fedml-server/fedml/logs/
   enable_wandb: true
   wandb_key: ee0b5f53d949c84cee7decbe7a629e63fb2f8408
-  wandb_project: ton-cpfedavg
+  wandb_project: cpfedavg
   run_name: mpi_hierarchical_fl_cifar10_resnet20
   wandb_only_server: true

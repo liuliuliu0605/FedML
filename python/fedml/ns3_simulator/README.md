@@ -2,7 +2,7 @@
 # Prerequisites
 ```shell
 sudo apt install -y openmpi-bin openmpi-common openmpi-doc libopenmpi-dev cmake
-pip install cppyy==2.4.2
+pip install cppyy==2.4.2 cvxpy==1.3.1
 ```
 
 # Download and install ns3.40

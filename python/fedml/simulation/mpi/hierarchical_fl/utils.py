@@ -14,6 +14,10 @@ from PIL import Image
 
 
 def calculate_optimal_tau(args, convergence_param_dict, time_dict, p):
+    # del convergence_param_dict['grad']
+    # del convergence_param_dict['cum_grad_delta']
+    # print("------", convergence_param_dict)
+    # exit(0)
     loss_delta = convergence_param_dict['loss']
     L = convergence_param_dict['L']
     sigma = convergence_param_dict['sigma']
@@ -63,9 +67,9 @@ def calculate_optimal_tau(args, convergence_param_dict, time_dict, p):
         wandb.log({"Estimation/tau": opt_tau, "comm_round": args.round_idx})
         wandb.log({"Estimation/objective": opt_value, "comm_round": args.round_idx})
 
-    logging.info(
-        "convergence_param_dict={}, time_dict={}, p={}, opt_tau={}".format(convergence_param_dict, time_dict, p, opt_tau)
-    )
+    # logging.info(
+    #     "convergence_param_dict={}, time_dict={}, p={}, opt_tau={}".format(convergence_param_dict, time_dict, p, opt_tau)
+    # )
 
     return opt_tau, opt_value
 
@@ -422,27 +426,22 @@ def post_complete_message_to_sweep_process(args):
 
 if __name__ == '__main__':
 
-    fmnist_params = {'sigma': 1.7, 'L': 72.897, 'gamma': 4.713,
-              'psi': 0.06666, 'K': 6.471, 'loss': 2.32, 'zeta': 4.5e-7}
-
-    cifar_params =  {'sigma': 1346.6006447640223, 'L': 2205.9963775601145, 'gamma': 705.6212093459262,
-                     'psi': 8.30353176121967, 'K': 4.61919191919192, 'loss': 2.4087824613888023,
-                     'local_update_time': 0.07494886665461212, 'num_params': 600372}
-    p = 0.2
-    N_tilde = 1000
-    convergence_param_dict = fmnist_params
-    # zeta = 1/convergence_param_dict['num_params'] #1e-10 * p**2
-    zeta = convergence_param_dict['zeta']
-    # zeta = 1 #1e-10 * p**2
+    cifar_params =   {'N_tilde': 985.457284505729, 'n_tilde': 98.22344710621157, 'N': 1000, 'n': 100,
+                      'avgN_minN': 1.3888888888888888, 'sigma': 26.11897600861355, 'L': 130.2531982786767,
+                      'gamma': 20.74032638633736, 'psi': 0.0016904592404552765, 'K': 47.955192955192956,
+                      'loss': 2.4603762316026785, 'cum_grad_delta_square': 115463.85614020767,
+                      'zeta': 1.0733820774717823e-05}
+    p = 0.3
+    convergence_param_dict = cifar_params
 
     time_dict = {
-        'agg_cost': 1.2,
-        'mix_cost': 0.99,
-        'budget': 2000
+        'agg_cost': 1.37,
+        'mix_cost': 9.025,
+        'budget': 1000
     }
 
     class ARGS:
         enable_wandb = False
 
-    opt_tau = calculate_optimal_tau(ARGS(), convergence_param_dict, time_dict, p, N_tilde)
+    opt_tau = calculate_optimal_tau(ARGS(), convergence_param_dict, time_dict, p)
     print(opt_tau)

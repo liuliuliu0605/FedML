@@ -63,8 +63,8 @@ def add_args():
     parser.add_argument("--enable_dynamic_topo", action="store_true")
 
     # ns3 arguments
-    parser.add_argument("--access_link_capacity", type=float, default=1.0e+7)
-    parser.add_argument("--core_link_capacity", type=float, default=1.0e+9)
+    parser.add_argument("--access_link_capacity", type=float, default=1.0e+8)
+    parser.add_argument("--core_link_capacity", type=float, default=1.0e+10)
     parser.add_argument("--lan_capacity", type=float, default=1.0e+11)
     parser.add_argument("--local_update_time", type=float, default=0.07576)
 

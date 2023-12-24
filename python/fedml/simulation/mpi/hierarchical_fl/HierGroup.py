@@ -50,7 +50,8 @@ class HierGroup(FedAvgAPI):
 
     def train(self, round_idx=0, w=None, sampled_client_indexes=None, group_to_data_size=None, is_estimate=False):
         if is_estimate:
-            param_estimation_dict = self._estimate(w, sampled_client_indexes)
+            # param_estimation_dict = self._estimate(w, sampled_client_indexes)
+            param_estimation_dict = self._estimate(w)
         else:
             param_estimation_dict = {}
 
@@ -101,8 +102,12 @@ class HierGroup(FedAvgAPI):
             w_group = w_group_list[-1][1]
         return w_group_list, sample_num_list, param_estimation_dict
 
-    def _estimate(self, w, sampled_client_indexes):
-        sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes[0]]
+    def _estimate(self, w, sampled_client_indexes=None):
+        if sampled_client_indexes is None:
+            # use total clients to estimate, this is more accurate
+            sampled_client_list = [self.client_dict[client_idx] for client_idx in self.client_dict]
+        else:
+            sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes[self.idx][0]]
         w_group = w
         param_estimation_dict = {}
         for idx, client in enumerate(sampled_client_list):

@@ -343,7 +343,8 @@ class Network:
         self.ps_client_ip_dict = {}
         csma = ns.csma.CsmaHelper()
         csma.SetChannelAttribute("DataRate", ns.core.StringValue("{:f}bps".format(self.lan_capacity)))
-        csma.SetChannelAttribute("Delay", ns.core.TimeValue(ns.core.Seconds(5e-6)))  # ~5us
+        # csma.SetChannelAttribute("Delay", ns.core.TimeValue(ns.core.Seconds(5e-6)))  # ~5us
+        csma.SetChannelAttribute("Delay", ns.core.TimeValue(ns.core.Seconds(10e-6)))  # ~50us
         ipv4_n.SetBase(ns.network.Ipv4Address("10.0.0.0"), ns.network.Ipv4Mask("255.255.255.0"))
         for i, _id in enumerate(self.client_id_list):
             lan_nodes = ns.network.NodeContainer()

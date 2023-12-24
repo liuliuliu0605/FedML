@@ -95,7 +95,7 @@ class HierFedAVGCloudAggregator(object):
             # averaged_params = self._fedavg_aggregation_(model_list)
             averaged_params = self._fedavg_noniid_aggregation_(model_list)
             self.set_global_model_params(averaged_params)
-            self.test_on_cloud_for_all_clients(global_round_idx)
+            self.test_on_cloud_for_all_clients(global_round_idx, group_round_idx=group_round_idx)
 
         # update the global model which is cached in the cloud
         self.set_global_model_params(averaged_params)
@@ -116,7 +116,7 @@ class HierFedAVGCloudAggregator(object):
             # averaged_params = self._fedavg_aggregation_(model_list)
             averaged_params = self._fedavg_noniid_aggregation_(model_list)
             self.set_global_model_params(averaged_params)
-            self.test_on_cloud_for_all_clients(global_round_idx)
+            self.test_on_cloud_for_all_clients(global_round_idx, group_round_idx=group_round_idx)
 
         mixed_params_list = []
         for idx in range(self.worker_num):
@@ -147,7 +147,7 @@ class HierFedAVGCloudAggregator(object):
             # the weight is determined by the speed of edge servers
             averaged_params = self._fedavg_aggregation_(model_list)
             self.set_global_model_params(averaged_params)
-            self.test_on_cloud_for_all_clients(global_round_idx)
+            self.test_on_cloud_for_all_clients(global_round_idx, group_round_idx=group_round_idx)
 
         return averaged_params
 
@@ -272,7 +272,7 @@ class HierFedAVGCloudAggregator(object):
 
             logging.info("metric_result_in_current_round = {}".format(metric_result_in_current_round))
 
-    def test_on_cloud_for_all_clients(self, global_round_idx):
+    def test_on_cloud_for_all_clients(self, global_round_idx, group_round_idx):
         if (
                 (
                         not self.args.enable_ns3 and
@@ -285,8 +285,10 @@ class HierFedAVGCloudAggregator(object):
                 (
                         self.args.enable_ns3 and
                         (
-                                self.args.ns3_time >= self.args.time_for_test
-                                or 0 < self.args.time_budget <= self.args.ns3_time
+                                0 < self.args.time_budget <= self.args.ns3_time
+                                or group_round_idx == self.args.group_comm_round - 1
+                                and self.args.ns3_time >= self.args.time_for_test
+                                # or self.args.ns3_time >= self.args.time_for_test
                         )
                 )
 
