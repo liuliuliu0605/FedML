@@ -14,15 +14,15 @@ CORE_LINK_CAPACITY=1e10
 LAN_CAPACITY=1e11
 LOCAL_UPDATE_TIME=0.275
 WORKER_NUM=$(($GROUP_NUM+1))
-#GPU_UTIL_PARSE=localhost:3,2,2,3
-GPU_UTIL_PARSE=localhost:2,3,3,2
+GPU_UTIL_PARSE_LIST=(localhost:3,2,2,3 localhost:2,3,3,2)
+#GPU_UTIL_PARSE=
 
 random_seed_list=()
 time_budget_list=()
 access_link_capacity_list=()
 core_link_capacity=()
-partition_alpha_list=(50 5 0.5)
 group_alpha_list=(0.05 0.5 5)
+partition_alpha_list=(50 5 0.5)
 alpha_index_list=(0 1 2)
 group_method_list=(random hetero)
 group_comm_pattern_list=(decentralized centralized async-centralized)
@@ -30,9 +30,9 @@ group_comm_pattern_list=(decentralized centralized async-centralized)
 
 group_method_list=(hetero)
 group_comm_pattern_list=(decentralized)
-alpha_index_list=(2)
+alpha_index_list=(0 2)
 
-
+experiment_num=0
 for GROUP_METHOD in ${group_method_list[@]};
 do
 
@@ -47,9 +47,11 @@ do
       if [ "${GROUP_COMM_PATTERN}" = "decentralized" ]; then
 #          group_comm_round_list=(0 1)
 #          group_comm_round_list=(1 10 3 30 5 50 7 70 100 200)
-#          topo_name_list=(complete 2d_torus ring star)
-          group_comm_round_list=(0)
-          topo_name_list=(complete)
+          topo_name_list=(complete 2d_torus ring star)
+#          group_comm_round_list=(5 50 7 70 100)
+#          topo_name_list=(2d_torus)
+          group_comm_round_list=(0 1 3 5 10 30 50 70 100)
+          topo_name_list=(ring)
         elif [ "${GROUP_COMM_PATTERN}" = "centralized" ];then
           group_comm_round_list=(4)
           topo_name_list=(complete)
@@ -68,6 +70,8 @@ do
               else
                 COMM_ROUND=$((BASE_COMM_ROUND/GROUP_COMM_ROUND))
             fi
+
+            GPU_UTIL_PARSE=${GPU_UTIL_PARSE_LIST[experiment_num%2]}
             log_file="group_method=$GROUP_METHOD-group_alpha=$GROUP_ALPHA-partition_alpha=$PARTITION_ALPHA-topo=$TOPO_NAME-group_comm_pattern=$GROUP_COMM_PATTERN-group_comm_round=$GROUP_COMM_ROUND.log"
             echo $log_file
             nohup mpirun -np $WORKER_NUM \
@@ -87,6 +91,8 @@ do
             sleep 60
             #    --enable_ns3
             #    --enable_dynamic_topo
+
+            experiment_num=$((experiment_num+1))
         done
 
       done

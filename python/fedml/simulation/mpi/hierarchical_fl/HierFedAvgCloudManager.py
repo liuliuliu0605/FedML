@@ -5,7 +5,7 @@ from .message_define import MyMessage
 from ....core.distributed.fedml_comm_manager import FedMLCommManager
 from ....core.distributed.communication.message import Message
 from .utils import post_complete_message_to_sweep_process, time_consuming_one_round, \
-    cal_mixing_consensus_speed, calculate_optimal_tau, adjust_topo
+    cal_mixing_consensus_speed, calculate_optimal_tau, adjust_topo, cal_control_ratio
 
 
 class HierFedAVGCloudManager(FedMLCommManager):
@@ -172,6 +172,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
                     or self.args.enable_parameter_estimation
             ):
                 self.convergence_param_dict.update(self.aggregator.aggregate_estimated_params())
+                # control_ratio = cal_control_ratio(self.args, self.convergence_param_dict, True)
 
             # start the next round
             self.args.round_idx += 1
@@ -198,7 +199,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
 
                 # calculate optimal tau
                 next_group_comm_round, objective_value = calculate_optimal_tau(
-                    self.args, self.convergence_param_dict, time_dict, p
+                    self.args, self.convergence_param_dict, time_dict, p, self.num_of_model_params
                 )
                 self.args.group_comm_round = next_group_comm_round
                 self.topo_action_objective_list[-1][1] = objective_value

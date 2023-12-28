@@ -77,15 +77,16 @@ class HierGroup(FedAvgAPI):
 
             # train each client
             sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes[group_round_idx]]
+            group_client_num = len(sampled_client_list)
             for client in sampled_client_list:
                 if group_to_data_size is not None:
                     # TODO: how to aggregate model between PSes in case of non-iid data
                     # scaled_loss_factor = (
                     #         self.args.group_num * group_to_data_size[self.idx] / sum(group_to_data_size.values())
                     # )
-                    scaled_loss_factor = self.args.group_num * self.args.client_num_per_round * client.local_sample_number / data_size_dict[group_round_idx]
+                    # scaled_loss_factor = self.args.group_num * self.args.client_num_per_round * client.local_sample_number / data_size_dict[group_round_idx]
+                    scaled_loss_factor = self.args.group_num * group_client_num * client.local_sample_number / data_size_dict[group_round_idx]
                     scaled_loss_factor = min(scaled_loss_factor, 1)
-                    # scaled_loss_factor = scaled_loss_factor / (global_round_idx // 10 + 1)  # learning rate decay
                     # scaled_loss_factor = 1
                     w_local = client.train(w_group, scaled_loss_factor)
                 else:
@@ -102,16 +103,20 @@ class HierGroup(FedAvgAPI):
             w_group = w_group_list[-1][1]
         return w_group_list, sample_num_list, param_estimation_dict
 
-    def _estimate(self, w, sampled_client_indexes=None):
-        if sampled_client_indexes is None:
-            # use total clients to estimate, this is more accurate
-            sampled_client_list = [self.client_dict[client_idx] for client_idx in self.client_dict]
-        else:
-            sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes[self.idx][0]]
+    def _estimate(self, w):
+        # use total clients to estimate, this is more accurate
+        sampled_client_list = [self.client_dict[client_idx] for client_idx in self.client_dict]
+        group_client_num = len(sampled_client_list)
+        total_data_size = sum(self.train_data_local_num_dict.values())
+        # sampled_client_list = [self.client_dict[client_idx] for client_idx in sampled_client_indexes[self.idx][0]]
         w_group = w
         param_estimation_dict = {}
+
         for idx, client in enumerate(sampled_client_list):
-            param_rs = client.estimate_parameters(w_group)
+            # scaled_loss_factor = self.args.group_num * self.args.client_num_per_round * client.local_sample_number / \
+            #                      data_size_dict[group_round_idx]
+            scaled_loss_factor = self.args.group_num * group_client_num * client.local_sample_number / total_data_size
+            param_rs = client.estimate_parameters(w_group, scaled_loss_factor=scaled_loss_factor)
             param_estimation_dict[idx] = param_rs
 
         agg_param_estimation_dict = agg_parameter_estimation(self.args, param_estimation_dict, 'gamma')

@@ -54,105 +54,217 @@ class HFLClient(Client):
         self.model.load_state_dict(w)
         self.model.to(self.device)
 
-        scaled_loss_factor = min(scaled_loss_factor, 1.0)
         if self.args.client_optimizer == "sgd":
             optimizer = torch.optim.SGD(self.model.parameters(), lr=self.args.learning_rate)
+            # optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-10)
         else:
             optimizer = torch.optim.Adam(
                 filter(lambda p: p.requires_grad, self.model.parameters()),
                 lr=self.args.learning_rate,
+                # lr=1e-10,
                 weight_decay=self.args.weight_decay,
                 amsgrad=True,
             )
 
         batch_num = len(self.local_training_data)
-        loss_value = 0
 
-        # calculate the variance of stochastic gradients
+        # calculate the initial grad and the variance of stochastic gradients
         grad = {}
         grad_square = 0
+        loss_value = 0
         for x, labels in self.local_training_data:
             x, labels = x.to(self.device), labels.to(self.device)
             self.model.zero_grad()
             log_probs = self.model(x)
             loss = self.criterion(log_probs, labels) * scaled_loss_factor
-            loss_value += loss.item()/batch_num
+            loss_value += loss.item() / batch_num
             loss.backward()
 
             for name, param in self.model.named_parameters():
                 grad_square += (param.grad ** 2).sum().item() / batch_num
                 if name not in grad:
-                    grad[name] = copy.deepcopy(param.grad) / batch_num
+                    grad[name] = copy.deepcopy(param.grad.cpu().numpy()) / batch_num
                 else:
-                    grad[name] += param.grad / batch_num
-
-        for name, param in self.model.named_parameters():
-            param.grad = grad[name]
-            grad[name] = copy.deepcopy(grad[name].cpu().numpy())
-
-        optimizer.step()
-
-        # calculate full gradient of the first local update
-        grad2 = {}
-        self.model.zero_grad()
-        for x, labels in self.local_training_data:
-            x, labels = x.to(self.device), labels.to(self.device)
-            log_probs = self.model(x)
-            loss = self.criterion(log_probs, labels) * scaled_loss_factor  # rewrite loss function
-            loss /= batch_num
-            loss.backward()
-
-        for name, param in self.model.named_parameters():
-            grad2[name] = copy.deepcopy(param.grad.cpu().numpy())
+                    grad[name] += param.grad.cpu().numpy() / batch_num
 
         sigma = grad_square
-        grad_delta, model_delta = 0, 0
         for name, param in self.model.named_parameters():
-            sigma -= (grad2[name]**2).sum().item()
-            grad_delta += ((grad[name] - grad2[name])**2).sum().item()
-            model_delta += ((w[name] - param.detach().cpu().numpy())**2).sum().item()
-        L = grad_delta / model_delta
+            sigma -= (grad[name] ** 2).sum().item()
 
-        # calculate zeta
+        # forward according to the last batch, it is used for estimating L in the following steps
+        optimizer.step()
+
+        # calculate zeta and L
+        self.model.to(self.device)
         cum_grad_delta = {}
         cum_grad_delta_square = 0
         num_of_local_updates = 0
         local_update_time = 0
+        L = 0
         for epoch in range(self.args.epochs):
             for x, labels in self.local_training_data:
                 start_time = time.time()
+
                 x, labels = x.to(self.device), labels.to(self.device)
                 self.model.zero_grad()
                 log_probs = self.model(x)
-                loss = self.criterion(log_probs, labels)  # pylint: disable=E1102
+                loss = self.criterion(log_probs, labels)
+                loss *= scaled_loss_factor
                 loss.backward()
+
                 end_time = time.time()
                 time_consumed = end_time - start_time
                 local_update_time += time_consumed
 
+                delta_grad_square, delta_model_square = 0, 0
                 for name, param in self.model.named_parameters():
                     delta_grad = grad[name] - param.grad.cpu().numpy()
-                    cum_grad_delta_square += (delta_grad**2).sum().item()
+                    delta_model = w[name] - param.detach().cpu().numpy()
                     if name not in cum_grad_delta:
                         cum_grad_delta[name] = copy.deepcopy(delta_grad)
                     else:
                         cum_grad_delta[name] += delta_grad
+                    cum_grad_delta_square += (delta_grad ** 2).sum().item()
+                    delta_grad_square += (delta_grad**2).sum().item()
+                    delta_model_square += (delta_model**2).sum().item()
+
+                # L += np.sqrt(delta_grad_square / delta_model_square)
+                L = max(L, np.sqrt(delta_grad_square / delta_model_square))
+                num_of_local_updates += 1
 
                 optimizer.step()
 
-                num_of_local_updates += 1
         cum_grad_delta_square *= num_of_local_updates
 
         return {
             'sigma': max(sigma, 0),
             'L': L,
-            'grad': grad,
+            'grad': grad,  # dict
             'K': num_of_local_updates,
             'loss': loss_value,
             'local_update_time': local_update_time,
-            'cum_grad_delta': cum_grad_delta,
+            'cum_grad_delta': cum_grad_delta,  # dict
             'cum_grad_delta_square': cum_grad_delta_square
         }
+
+    # def estimate_parameters(self, w, scaled_loss_factor=1.0):
+    #     self.model.load_state_dict(w)
+    #     self.model.to(self.device)
+    #
+    #     if self.args.client_optimizer == "sgd":
+    #         # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.args.learning_rate)
+    #         optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-5)
+    #     else:
+    #         optimizer = torch.optim.Adam(
+    #             filter(lambda p: p.requires_grad, self.model.parameters()),
+    #             # lr=self.args.learning_rate,
+    #             lr=1e-5,
+    #             weight_decay=self.args.weight_decay,
+    #             amsgrad=True,
+    #         )
+    #
+    #     batch_num = len(self.local_training_data)
+    #
+    #     # calculate full gradient of the first local update
+    #     loss_value = 0
+    #     grad = {}
+    #     self.model.zero_grad()
+    #     for x, labels in self.local_training_data:
+    #         x, labels = x.to(self.device), labels.to(self.device)
+    #         log_probs = self.model(x)
+    #         loss = self.criterion(log_probs, labels) * scaled_loss_factor  # rewrite loss function
+    #         loss /= batch_num
+    #         loss_value += loss.item()
+    #         loss.backward()
+    #
+    #     for name, param in self.model.named_parameters():
+    #         grad[name] = copy.deepcopy(param.grad.cpu().numpy())
+    #
+    #     optimizer.step()
+    #
+    #     # calculate the variance of stochastic gradients
+    #     grad2 = {}
+    #     grad_square = 0
+    #     for x, labels in self.local_training_data:
+    #         x, labels = x.to(self.device), labels.to(self.device)
+    #         log_probs = self.model(x)
+    #         loss = self.criterion(log_probs, labels) * scaled_loss_factor
+    #         self.model.zero_grad()
+    #         loss.backward()
+    #
+    #         for name, param in self.model.named_parameters():
+    #             grad_square += (param.grad ** 2).sum().item() / batch_num
+    #             if name not in grad2:
+    #                 grad2[name] = copy.deepcopy(param.grad.cpu().numpy()) / batch_num
+    #             else:
+    #                 grad2[name] += param.grad.cpu().numpy() / batch_num
+    #
+    #     sigma = grad_square
+    #     grad_delta, model_delta = 0, 0
+    #     for name, param in self.model.named_parameters():
+    #         sigma -= (grad2[name]**2).sum().item()
+    #         grad_delta += np.linalg.norm(grad[name] - grad2[name])
+    #         model_delta += np.linalg.norm(w[name] - param.detach().cpu().numpy())
+    #     L = grad_delta / model_delta
+    #
+    #     # calculate zeta
+    #     self.model.load_state_dict(w)
+    #     self.model.to(self.device)
+    #     cum_grad_delta = {}
+    #     cum_grad_delta_square = 0
+    #     num_of_local_updates = 0
+    #     local_update_time = 0
+    #     for epoch in range(self.args.epochs):
+    #         for x, labels in self.local_training_data:
+    #             start_time = time.time()
+    #             x, labels = x.to(self.device), labels.to(self.device)
+    #             self.model.zero_grad()
+    #             log_probs = self.model(x)
+    #             loss = self.criterion(log_probs, labels)
+    #             loss *= scaled_loss_factor
+    #             loss.backward()
+    #             end_time = time.time()
+    #             time_consumed = end_time - start_time
+    #             local_update_time += time_consumed
+    #
+    #             for name, param in self.model.named_parameters():
+    #                 delta_grad = grad[name] - param.grad.cpu().numpy()
+    #                 cum_grad_delta_square += (delta_grad**2).sum().item()
+    #                 if name not in cum_grad_delta:
+    #                     cum_grad_delta[name] = copy.deepcopy(delta_grad)
+    #                 else:
+    #                     cum_grad_delta[name] += delta_grad
+    #
+    #             optimizer.step()
+    #
+    #             num_of_local_updates += 1
+    #     cum_grad_delta_square *= num_of_local_updates
+    #
+    #     return {
+    #         'sigma': max(sigma, 0),
+    #         'L': L,
+    #         'grad': grad,  # dict
+    #         'K': num_of_local_updates,
+    #         'loss': loss_value,
+    #         'local_update_time': local_update_time,
+    #         'cum_grad_delta': cum_grad_delta,  # dict
+    #         'cum_grad_delta_square': cum_grad_delta_square
+    #     }
+
+        # for name, param in self.model.named_parameters():
+        #     grad[name] *= scaled_loss_factor
+        #     cum_grad_delta[name] *= scaled_loss_factor
+
+        # return {
+        #     'sigma': max(sigma, 0) * scaled_loss_factor**2,
+        #     'L': L * scaled_loss_factor,
+        #     'grad': grad,   # dict
+        #     'K': num_of_local_updates * scaled_loss_factor,
+        #     'loss': loss_value * scaled_loss_factor,
+        #     'local_update_time': local_update_time * scaled_loss_factor,
+        #     'cum_grad_delta': cum_grad_delta,   # dict
+        #     'cum_grad_delta_square': cum_grad_delta_square * scaled_loss_factor **2
+        # }
 
     # def estimate_parameters(self, w, scaled_loss_factor=1.0):
     #     self.model.load_state_dict(w)

@@ -13,112 +13,6 @@ from ns import ns
 from PIL import Image
 
 
-def calculate_optimal_tau(args, convergence_param_dict, time_dict, p):
-    # del convergence_param_dict['grad']
-    # del convergence_param_dict['cum_grad_delta']
-    # print("------", convergence_param_dict)
-    # exit(0)
-    loss_delta = convergence_param_dict['loss']
-    L = convergence_param_dict['L']
-    sigma = convergence_param_dict['sigma']
-    gamma = convergence_param_dict['gamma']
-    psi = convergence_param_dict['psi']
-    K = convergence_param_dict['K']
-    zeta = convergence_param_dict['zeta']
-    N = convergence_param_dict['N']
-    N_tilde = convergence_param_dict['N_tilde']
-    n = convergence_param_dict['n']
-    n_tilde = convergence_param_dict['n_tilde']
-    avgN_minN = convergence_param_dict['avgN_minN']
-
-    agg_cost = time_dict['agg_cost']
-    mix_cost = time_dict['mix_cost']
-    U = time_dict['budget']
-
-    def h(tau):
-        a1 = 16 * L * loss_delta / sqrt(K*n_tilde) \
-             + 8 * sigma * zeta / sqrt(K*n_tilde) \
-             + 24 * L * N * (N-n) * sqrt(n_tilde) * (sigma + 18 * K *gamma) / (N-1) /n / sqrt(K) * zeta \
-             + avgN_minN * 432 * sqrt(K) * (N - n) * sqrt(n_tilde) * psi / (N-1) / n * zeta
-        a2 = 24 * n_tilde* (sigma + 18 * K * gamma) * zeta
-        a3 = 768 * n_tilde * sigma * zeta
-        a4 = 768 * 16 * n_tilde * K * psi * zeta
-
-        d_agg = agg_cost
-        d_mix = mix_cost
-
-        phi = (tau * d_agg + d_mix) / U / tau
-
-        A = a1 * sqrt(phi)
-        B = phi * (a2 + a3 * tau / p + a4 * tau**2 / p**2)
-        H = A + B
-
-        return H
-
-    opt_tau = 1
-    opt_value = sys.maxsize
-    for tau in range(1, 1001):
-        h_value = h(tau)
-        if h_value < opt_value:
-            opt_tau = tau
-            opt_value = h_value
-
-    if args.enable_wandb:
-        wandb.log({"Estimation/tau": opt_tau, "comm_round": args.round_idx})
-        wandb.log({"Estimation/objective": opt_value, "comm_round": args.round_idx})
-
-    # logging.info(
-    #     "convergence_param_dict={}, time_dict={}, p={}, opt_tau={}".format(convergence_param_dict, time_dict, p, opt_tau)
-    # )
-
-    return opt_tau, opt_value
-
-
-def adjust_topo(args, topo_action_objective_list, network):
-    # 1 refers to add and -1 refers to remove
-    action = 1
-
-    if len(topo_action_objective_list) >= 2:
-        if topo_action_objective_list[-1][1] <= topo_action_objective_list[-2][1]:
-            action = topo_action_objective_list[-1][0][0]
-        else:
-            action = -topo_action_objective_list[-1][0][0]
-
-    topology = network.topology_manager.topology
-    choice = None
-    if action == 1:
-        # add edge with the lowest latency
-        minimum = sys.maxsize
-        for i in range(len(topology)):
-            for j in range(i+1, len(topology[i])):
-                if topology[i, j] == 0:
-                    latency = network.get_latency(i, j)
-                    if latency < minimum:
-                        minimum = latency
-                        choice = (i, j)
-        if choice is not None:
-            network.add_edge(*choice)
-    elif action == -1:
-        # remove edge with the highest latency
-        maximum = -1
-        for i in range(len(topology)):
-            for j in range(i+1, len(topology[i])):
-                if topology[i, j] > 0 and \
-                        len(network.topology_manager.get_in_neighbor_idx_list(i)) > 2 and \
-                        len(network.topology_manager.get_in_neighbor_idx_list(j)) > 2:
-                    latency = network.get_latency(i, j)
-                    if latency > maximum:
-                        maximum = latency
-                        choice = (i,j)
-        if choice is not None:
-            network.remove_edge(*choice)
-
-    action = action if choice is not None else 0
-    topo_action_objective_list.append([(action, choice), None])
-
-    return action, choice
-
-
 def time_consuming_one_round(
         args, process_id, mpi_comm, network, sampled_group_to_client_indexes, model_size, system_id_list
 ):
@@ -191,9 +85,105 @@ def time_consuming_one_round(
         args.ns3_time_arr[min_index] = args.ns3_time
 
 
+def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, num_of_model_params):
+    # del convergence_param_dict['grad']
+    # del convergence_param_dict['cum_grad_delta']
+    # print("------", convergence_param_dict)
+    loss_delta = convergence_param_dict['loss']
+    L = convergence_param_dict['L']
+    sigma = convergence_param_dict['sigma']
+    gamma = convergence_param_dict['gamma']
+    psi = convergence_param_dict['psi']
+    K = convergence_param_dict['K']
+    zeta = convergence_param_dict['zeta'] / num_of_model_params
+    N = convergence_param_dict['N']
+    N_tilde = convergence_param_dict['N_tilde']
+    n = convergence_param_dict['n']
+    n_tilde = convergence_param_dict['n_tilde']
+    avgN_minN = convergence_param_dict['avgN_minN']
+
+    agg_cost = time_dict['agg_cost']
+    mix_cost = time_dict['mix_cost']
+    U = time_dict['budget']
+
+    def h(tau):
+        a1 = 16 * L * loss_delta / sqrt(K*n_tilde) \
+             + 8 * sigma / sqrt(K*n_tilde) \
+             + 24 * N * (N-n) * sqrt(n_tilde) * (sigma + 18 * K * gamma) / N_tilde /(N-1) / n / sqrt(K) \
+             + 432 * avgN_minN * sqrt(K) * (N - n) * sqrt(n_tilde) * psi / (N-1) / n
+
+        a2 = 24 * n_tilde * (sigma + 18 * K * gamma) * zeta
+        a3 = 768 * n_tilde * sigma * zeta
+        a4 = 768 * 16 * n_tilde * K * psi * zeta
+
+        d_agg = agg_cost
+        d_mix = mix_cost
+
+        phi = (tau * d_agg + d_mix) / (U * tau)
+
+        A = a1 * sqrt(phi)
+        B = phi * (a2 + a3 * tau / p + a4 * tau**2 / p**2)
+        H = A + B
+
+        return H
+
+    opt_tau = 1
+    opt_value = sys.maxsize
+    for tau in range(1, 1001):
+        h_value = h(tau)
+        if h_value < opt_value:
+            opt_tau = tau
+            opt_value = h_value
+
+    if args.enable_wandb:
+        wandb.log({"Estimation/tau": opt_tau, "comm_round": args.round_idx})
+        wandb.log({"Estimation/objective": opt_value, "comm_round": args.round_idx})
+
+    # logging.info(
+    #     "convergence_param_dict={}, time_dict={}, p={}, opt_tau={}".format(convergence_param_dict, time_dict, p, opt_tau)
+    # )
+
+    return opt_tau, opt_value
+
+
+def cal_control_ratio(args, convergence_param_dict, log_wandb=False):
+    loss_delta = convergence_param_dict['loss']
+    L = convergence_param_dict['L']
+    sigma = convergence_param_dict['sigma']
+    gamma = convergence_param_dict['gamma']
+    psi = convergence_param_dict['psi']
+    K = convergence_param_dict['K']
+    N = convergence_param_dict['N']
+    N_tilde = convergence_param_dict['N_tilde']
+    n = convergence_param_dict['n']
+    n_tilde = convergence_param_dict['n_tilde']
+    avgN_minN = convergence_param_dict['avgN_minN']
+    grad_square = convergence_param_dict['grad_square']
+
+    a = 16 * L * loss_delta / sqrt(K * N_tilde) \
+
+    b = 8 * sigma / sqrt(K * N_tilde) \
+        + 24 * N_tilde * (sigma + 18 * K * gamma) \
+        + 768 * N_tilde * (sigma + 16 * K * psi)  \
+        # + 24 * N * (N - n) * sqrt(n_tilde) * (sigma + 18 * K * gamma) / N_tilde / (N - 1) / n / sqrt(K) \
+        # + 432 * avgN_minN * sqrt(K) * (N - n) * sqrt(n_tilde) * psi / (N - 1) / n
+
+    # print("~~~~~~~~~~~~~{}-{}-{}-{}".format(L, loss_delta, K, n_tilde))
+    # print("~~~~~~~~~~~~{}-{}-{}".format(grad_square, a, b))
+    # exit(0)
+    control_ratio = (grad_square - a)/b
+
+    if log_wandb:
+        wandb.log({"Estimation/control_ratio": control_ratio, "comm_round": args.round_idx})
+
+    return control_ratio
+
+
 def agg_parameter_estimation(args, param_estimation_dict, var_name, log_wandb=False):
     agg_param_estimation_dict = {}
     size = len(param_estimation_dict)
+    # total_sample_number = sum([param_estimation_dict[i]['sample_number'] for i in range(size)])
+
     for k in param_estimation_dict[0].keys():
         if k == 'grad':
             agg_param_estimation = {}
@@ -201,7 +191,7 @@ def agg_parameter_estimation(args, param_estimation_dict, var_name, log_wandb=Fa
             for name in param_estimation_dict[0][k]:
                 for i in range(size):
                     layer_grad = param_estimation_dict[i][k][name]
-                    if k not in agg_param_estimation:
+                    if name not in agg_param_estimation:
                         agg_param_estimation[name] = layer_grad / size
                     else:
                         agg_param_estimation[name] += layer_grad / size
@@ -217,7 +207,7 @@ def agg_parameter_estimation(args, param_estimation_dict, var_name, log_wandb=Fa
             for name in param_estimation_dict[0][k]:
                 for i in range(size):
                     layer_grad = param_estimation_dict[i][k][name]
-                    if k not in agg_param_estimation:
+                    if name not in agg_param_estimation:
                         agg_param_estimation[name] = layer_grad / size
                     else:
                         agg_param_estimation[name] += layer_grad / size
@@ -225,21 +215,28 @@ def agg_parameter_estimation(args, param_estimation_dict, var_name, log_wandb=Fa
             agg_param_estimation_dict['cum_grad_delta'] = agg_param_estimation
         else:
             agg_param_estimation_dict[k] = sum(
-                [param_estimation_dict[idx][k] for idx in range(size)]
-            ) / size
+                [param_estimation_dict[i][k] / size for i in range(size)]
+            )
+
+    # agg_param_estimation_dict['sample_number'] = total_sample_number
 
     if var_name == 'psi':
         cum_grad_delta_square = agg_param_estimation_dict['cum_grad_delta_square']
         cum_grad_delta_square2 = 0
         for name in agg_param_estimation_dict['cum_grad_delta']:
-            cum_grad_delta_square2 += (agg_param_estimation_dict['cum_grad_delta'][name]**2).sum().item()
+            cum_grad_delta_square2 += (agg_param_estimation_dict['cum_grad_delta'][name]**2).sum()
         zeta = cum_grad_delta_square2 / cum_grad_delta_square
         agg_param_estimation_dict['zeta'] = zeta
+        grad_square = 0
+        for name in  agg_param_estimation_dict['grad']:
+            grad_square += (agg_param_estimation_dict['grad'][name] ** 2).sum()
+        agg_param_estimation_dict['grad_square'] = grad_square
 
     if log_wandb:
         for key in agg_param_estimation_dict:
             if key not in ['cum_grad_delta', 'grad']:
                 wandb.log({"Estimation/%s" % key: agg_param_estimation_dict[key], "comm_round": args.round_idx})
+
     return agg_param_estimation_dict
 
 
@@ -251,6 +248,51 @@ def cal_mixing_consensus_speed(args, topo_weight_matrix):
     if args.enable_wandb:
         wandb.log({"Estimation/p": p, "comm_round": args.round_idx})
     return p
+
+
+def adjust_topo(args, topo_action_objective_list, network):
+    # 1 refers to add and -1 refers to remove
+    action = 1
+
+    if len(topo_action_objective_list) >= 2:
+        if topo_action_objective_list[-1][1] <= topo_action_objective_list[-2][1]:
+            action = topo_action_objective_list[-1][0][0]
+        else:
+            action = -topo_action_objective_list[-1][0][0]
+
+    topology = network.topology_manager.topology
+    choice = None
+    if action == 1:
+        # add edge with the lowest latency
+        minimum = sys.maxsize
+        for i in range(len(topology)):
+            for j in range(i+1, len(topology[i])):
+                if topology[i, j] == 0:
+                    latency = network.get_latency(i, j)
+                    if latency < minimum:
+                        minimum = latency
+                        choice = (i, j)
+        if choice is not None:
+            network.add_edge(*choice)
+    elif action == -1:
+        # remove edge with the highest latency
+        maximum = -1
+        for i in range(len(topology)):
+            for j in range(i+1, len(topology[i])):
+                if topology[i, j] > 0 and \
+                        len(network.topology_manager.get_in_neighbor_idx_list(i)) > 2 and \
+                        len(network.topology_manager.get_in_neighbor_idx_list(j)) > 2:
+                    latency = network.get_latency(i, j)
+                    if latency > maximum:
+                        maximum = latency
+                        choice = (i,j)
+        if choice is not None:
+            network.remove_edge(*choice)
+
+    action = action if choice is not None else 0
+    topo_action_objective_list.append([(action, choice), None])
+
+    return action, choice
 
 
 def stats_group(group_to_client_indexes, train_data_local_dict, train_data_local_num_dict, class_num, args):
@@ -427,11 +469,26 @@ def post_complete_message_to_sweep_process(args):
 if __name__ == '__main__':
 
     cifar_params =   {'N_tilde': 985.457284505729, 'n_tilde': 98.22344710621157, 'N': 1000, 'n': 100,
-                      'avgN_minN': 1.3888888888888888, 'sigma': 26.11897600861355, 'L': 130.2531982786767,
-                      'gamma': 20.74032638633736, 'psi': 0.0016904592404552765, 'K': 47.955192955192956,
+                      'avgN_minN': 1.3888888888888888, 'sigma': 10.809, 'L': 10.78,
+                      'gamma': 22.234, 'psi': 0.001818, 'K': 47.955192955192956,
                       'loss': 2.4603762316026785, 'cum_grad_delta_square': 115463.85614020767,
-                      'zeta': 1.0733820774717823e-05}
-    p = 0.3
+                      'zeta': 0.000001364}
+    # alpha=5
+    cifar_params = {'N_tilde': 985.457284505729, 'n_tilde': 98.22344710621157, 'N': 1000, 'n': 100,
+                    'avgN_minN': 1.3888888888888888, 'sigma': 9.2, 'L': 11.3,
+                    'gamma': 2.9, 'psi': 40.481, 'K': 45.74451084941448,
+                    'loss': 2.4752325224603156, 'local_update_time': 0.2656077905558161,
+                    'cum_grad_delta_square': 288305.1009474684, 'zeta': 0.041}
+
+    cifar_params = {'N_tilde': 985.457284505729, 'n_tilde': 98.22344710621157, 'N': 1000, 'n': 100,
+                    'avgN_minN': 1.3888888888888888, 'sigma': 11.494540274599778, 'L': 11.569572679745752,
+                    'gamma': 20.812762032864583, 'psi': 1.3276396994972404, 'K': 45.74451084941445,
+                    'loss': 2.2841203982827825, 'local_update_time': 0.2811264172324692,
+                    'cum_grad_delta_square': 244091.01196726607, 'zeta': 0.03}
+
+    # alpha=0.05
+
+    p = 1.0
     convergence_param_dict = cifar_params
 
     time_dict = {
@@ -443,5 +500,5 @@ if __name__ == '__main__':
     class ARGS:
         enable_wandb = False
 
-    opt_tau = calculate_optimal_tau(ARGS(), convergence_param_dict, time_dict, p)
+    opt_tau = calculate_optimal_tau(ARGS(), convergence_param_dict, time_dict, p, num_of_model_params=1000000)
     print(opt_tau)
