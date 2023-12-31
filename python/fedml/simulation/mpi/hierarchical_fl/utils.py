@@ -57,6 +57,8 @@ def time_consuming_one_round(
                                                                           fast_forward=args.fast_mode)
         else:
             raise NotImplementedError
+        logging.info("region delay:{}".format(region_delay))
+        logging.info("global delay:{}".format(global_delay))
 
         # record consumed time in history
         network.add_history(config_param, (delay_matrix, region_delay, global_delay))
@@ -64,8 +66,13 @@ def time_consuming_one_round(
         ns.mpi.MpiInterface.Disable()
 
         if process_id == 0 and args.enable_wandb:
-            wandb.log({"Estimation/ps_client_time": region_delay.mean(), "comm_round": args.round_idx})
-            wandb.log({"Estimation/ps_ps_time": global_delay.mean(), "comm_round": args.round_idx})
+            wandb.log({"Estimation/ps_client_time_mean": region_delay.mean(), "comm_round": args.round_idx})
+            wandb.log({"Estimation/ps_client_time_min": region_delay.min(), "comm_round": args.round_idx})
+            wandb.log({"Estimation/ps_client_time_max": region_delay.max(), "comm_round": args.round_idx})
+            wandb.log({"Estimation/ps_ps_time_mean": global_delay.mean(), "comm_round": args.round_idx})
+            wandb.log({"Estimation/ps_ps_time_min": global_delay.min(), "comm_round": args.round_idx})
+            wandb.log({"Estimation/ps_ps_time_max": global_delay.max(), "comm_round": args.round_idx})
+            wandb.log({"Estimation/total_time_max": delay_matrix.max(), "comm_round": args.round_idx})
             wandb.log({"Estimation/model_size": model_size, "comm_round": args.round_idx})
 
             if args.enable_dynamic_topo or args.round_idx == 0:
@@ -79,10 +86,12 @@ def time_consuming_one_round(
     if args.group_comm_pattern in ['decentralized', 'centralized', 'allreduce']:
         args.ns3_time += delay_matrix.max()
     elif args.group_comm_pattern in ['async-centralized']:
-        current_time_list = region_delay + global_delay + args.ns3_time_arr
+        current_time_list = delay_matrix.max(axis=0)[1:] + args.ns3_time_arr
         min_index = np.argmin(current_time_list)
         args.ns3_time = current_time_list[min_index]
         args.ns3_time_arr[min_index] = args.ns3_time
+        if args.rank == 0:
+            logging.info("==={}-{}-{}".format(args.ns3_time, args.ns3_time_arr, delay_matrix.max(axis=0)[1:]))
 
 
 def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, num_of_model_params):

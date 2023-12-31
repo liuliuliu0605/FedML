@@ -10,7 +10,7 @@ import time
 args = parser.parse_args()
 print(args)
 
-seed=1
+seed=0
 enable_mpi = True if MPI.COMM_WORLD.Get_size() > 1 else False
 verbose=False
 
@@ -97,6 +97,7 @@ if time_consuming_matrix is not None:
            np.max(time_consuming_matrix),
            t_b - t_a))
     print("receive time: {}".format(time_consuming_matrix.max(axis=0)))
+    print("mean receive time: {}".format(time_consuming_matrix.max(axis=0).mean()))
 print("-" * 50)
 
 if enable_mpi:

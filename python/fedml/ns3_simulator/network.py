@@ -14,8 +14,9 @@ import os
 import time
 import itertools
 
-# LAN_LATENCY = 5e-7
+LAN_LATENCY = 10e-6
 # PACKET_SIZE = 1448
+PS_ACCESS_ROUTER_LATENCY = 1e-3
 BUFFER_SIZE = 1 << 20  # default sender and receiver buffer size as 1MB
 
 # ns.core.Config.SetDefault ("ns3::TcpL4Protocol::RecoveryType", ns.core.TypeIdValue(ns.internet.TcpPrrRecovery.GetTypeId()))
@@ -321,7 +322,7 @@ class Network:
         # link ps to backbone router
         self.ps_ps_ip_dict = {}
         p2p.SetDeviceAttribute("DataRate", ns.core.StringValue("{:f}bps".format(self.access_link_capacity)))
-        p2p.SetChannelAttribute("Delay", ns.core.TimeValue(ns.core.Seconds(1e-6)))
+        p2p.SetChannelAttribute("Delay", ns.core.TimeValue(ns.core.Seconds(PS_ACCESS_ROUTER_LATENCY)))
         ipv4_n.SetBase(ns.network.Ipv4Address("172.18.0.0"), ns.network.Ipv4Mask("255.255.255.0"))
         for i, _id in enumerate(self.edge_ps_id_list):
             ps_backbone = ns.network.NodeContainer()
@@ -343,8 +344,7 @@ class Network:
         self.ps_client_ip_dict = {}
         csma = ns.csma.CsmaHelper()
         csma.SetChannelAttribute("DataRate", ns.core.StringValue("{:f}bps".format(self.lan_capacity)))
-        # csma.SetChannelAttribute("Delay", ns.core.TimeValue(ns.core.Seconds(5e-6)))  # ~5us
-        csma.SetChannelAttribute("Delay", ns.core.TimeValue(ns.core.Seconds(10e-6)))  # ~50us
+        csma.SetChannelAttribute("Delay", ns.core.TimeValue(ns.core.Seconds(LAN_LATENCY)))
         ipv4_n.SetBase(ns.network.Ipv4Address("10.0.0.0"), ns.network.Ipv4Mask("255.255.255.0"))
         for i, _id in enumerate(self.client_id_list):
             lan_nodes = ns.network.NodeContainer()

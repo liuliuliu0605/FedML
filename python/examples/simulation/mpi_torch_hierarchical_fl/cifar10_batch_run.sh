@@ -1,5 +1,5 @@
 CONFIG_PATH=config/cifar10_resnet20/fedml_config.yaml
-RANDOM_SEED=0
+RANDOM_SEED=1
 GROUP_NUM=9
 BASE_COMM_ROUND=0
 TIME_BUDGET=1000
@@ -21,16 +21,16 @@ random_seed_list=()
 time_budget_list=()
 access_link_capacity_list=()
 core_link_capacity=()
-group_alpha_list=(0.05 0.5 5)
-partition_alpha_list=(50 5 0.5)
+group_alpha_list=(0.05 0.1 5)
+partition_alpha_list=(50 25 0.5)
 alpha_index_list=(0 1 2)
 group_method_list=(random hetero)
 group_comm_pattern_list=(decentralized centralized async-centralized)
 
 
 group_method_list=(hetero)
-group_comm_pattern_list=(decentralized)
-alpha_index_list=(0 2)
+group_comm_pattern_list=(decentralized centralized async-centralized)
+alpha_index_list=(0 1 2)
 
 experiment_num=0
 for GROUP_METHOD in ${group_method_list[@]};
@@ -47,15 +47,15 @@ do
       if [ "${GROUP_COMM_PATTERN}" = "decentralized" ]; then
 #          group_comm_round_list=(0 1)
 #          group_comm_round_list=(1 10 3 30 5 50 7 70 100 200)
-          topo_name_list=(complete 2d_torus ring star)
+#          topo_name_list=(complete 2d_torus ring star)
 #          group_comm_round_list=(5 50 7 70 100)
-#          topo_name_list=(2d_torus)
-          group_comm_round_list=(0 1 3 5 10 30 50 70 100)
-          topo_name_list=(ring)
+#          topo_name_list=(complete 2d_torus)
+          group_comm_round_list=(0)
+          topo_name_list=(complete)
         elif [ "${GROUP_COMM_PATTERN}" = "centralized" ];then
           group_comm_round_list=(4)
           topo_name_list=(complete)
-        else
+        elif [ "${GROUP_COMM_PATTERN}" = "async-centralized" ];then
           group_comm_round_list=(4)
           topo_name_list=(complete)
       fi
