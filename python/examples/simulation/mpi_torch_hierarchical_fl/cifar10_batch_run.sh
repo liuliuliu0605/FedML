@@ -1,5 +1,5 @@
 CONFIG_PATH=config/cifar10_resnet20/fedml_config.yaml
-RANDOM_SEED=1
+RANDOM_SEED=0
 GROUP_NUM=9
 BASE_COMM_ROUND=0
 TIME_BUDGET=1000
@@ -29,7 +29,7 @@ group_comm_pattern_list=(decentralized centralized async-centralized)
 
 
 group_method_list=(hetero)
-group_comm_pattern_list=(decentralized centralized async-centralized)
+group_comm_pattern_list=(async-centralized)
 alpha_index_list=(0 1 2)
 
 experiment_num=0
@@ -50,7 +50,7 @@ do
 #          topo_name_list=(complete 2d_torus ring star)
 #          group_comm_round_list=(5 50 7 70 100)
 #          topo_name_list=(complete 2d_torus)
-          group_comm_round_list=(0)
+          group_comm_round_list=(0 1)
           topo_name_list=(complete)
         elif [ "${GROUP_COMM_PATTERN}" = "centralized" ];then
           group_comm_round_list=(4)
@@ -73,7 +73,7 @@ do
 
             GPU_UTIL_PARSE=${GPU_UTIL_PARSE_LIST[experiment_num%2]}
             log_file="group_method=$GROUP_METHOD-group_alpha=$GROUP_ALPHA-partition_alpha=$PARTITION_ALPHA-topo=$TOPO_NAME-group_comm_pattern=$GROUP_COMM_PATTERN-group_comm_round=$GROUP_COMM_ROUND.log"
-            echo $log_file
+            echo $experiment_num_$log_file
             nohup mpirun -np $WORKER_NUM \
                 -hostfile mpi_host_file \
                 python main.py --cf $CONFIG_PATH --random_seed $RANDOM_SEED\
@@ -85,13 +85,12 @@ do
                 --group_comm_round $GROUP_COMM_ROUND\
                 --access_link_capacity $ACCESS_LINK_CAPACITY --core_link_capacity $CORE_LINK_CAPACITY\
                 --lan_capacity $LAN_CAPACITY --local_update_time $LOCAL_UPDATE_TIME\
-                --enable_ns3\
+                --enable_ns3 \
                 > batch_log/$log_file 2>&1 \
                 & echo $! >> batch_log/process.pid
             sleep 60
             #    --enable_ns3
             #    --enable_dynamic_topo
-
             experiment_num=$((experiment_num+1))
         done
 

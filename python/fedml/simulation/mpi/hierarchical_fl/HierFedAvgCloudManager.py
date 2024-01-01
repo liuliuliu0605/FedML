@@ -144,9 +144,19 @@ class HierFedAVGCloudManager(FedMLCommManager):
         sample_num_list = msg_params.get(MyMessage.MSG_ARG_KEY_NUM_SAMPLES)
         param_estimation_dict = msg_params.get(MyMessage.MSG_ARG_KEY_PARAMETER_ESTIMATION_DICT)
 
-        self.aggregator.add_local_trained_result(
-            sender_id - 1, model_params_list, sample_num_list, param_estimation_dict
-        )
+        if self.args.group_comm_pattern in ['async-centralized']:
+            expected_sender_id = np.where(self.args.ns3_time_arr == self.args.ns3_time)[0][0] + 1
+            if sender_id == expected_sender_id:
+                self.aggregator.add_local_trained_result(
+                    sender_id - 1, model_params_list, sample_num_list, param_estimation_dict
+                )
+            else:
+                # we play a trick to pretend that the model has been updated
+                self.aggregator.flag_client_model_uploaded_dict[sender_id - 1] = True
+        else:
+            self.aggregator.add_local_trained_result(
+                sender_id - 1, model_params_list, sample_num_list, param_estimation_dict
+            )
 
         b_all_received = self.aggregator.check_whether_all_receive()
         logging.info("b_all_received = " + str(b_all_received))
@@ -246,7 +256,6 @@ class HierFedAVGCloudManager(FedMLCommManager):
                     # if edge model is None, edge will not train in the coming round
                     if receiver_id == expected_sender_id:
                         edge_model = global_model_params
-                    # total_sampled_data_size = 0
 
                 self.send_message_sync_model_to_edge(
                     receiver_id,

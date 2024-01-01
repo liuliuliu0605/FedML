@@ -61,9 +61,9 @@ class HierFedAVGCloudAggregator(object):
 
     def add_local_trained_result(self, index, model_params_list, sample_num, param_estimation_dict):
         logging.info("add_model. index = %d" % index)
-        self.model_dict[index] = model_params_list if model_params_list is not None else self.model_dict[index]
-        self.sample_num_dict[index] = sample_num if sample_num is not None else self.sample_num_dict[index]
-        self.param_estimation_dict[index] = param_estimation_dict if param_estimation_dict is not None else self.param_estimation_dict[index]
+        self.model_dict[index] = model_params_list
+        self.sample_num_dict[index] = sample_num
+        self.param_estimation_dict[index] = param_estimation_dict
         self.flag_client_model_uploaded_dict[index] = True
 
     def check_whether_all_receive(self):
@@ -181,7 +181,7 @@ class HierFedAVGCloudAggregator(object):
                 local_sample_number, local_model_params = model_list[i]
                 if i == 0:
                     averaged_params[k] = (
-                        copy.deepcopy(local_model_params[k]) / len(model_list)
+                        local_model_params[k] / len(model_list)
                     )
                 else:
                     averaged_params[k] += (
@@ -198,7 +198,7 @@ class HierFedAVGCloudAggregator(object):
                 topo_weight = neighbor_topo_weight_list[i]
                 if i == 0:
                     averaged_params[k] = (
-                            copy.deepcopy(local_model_params[k]) * topo_weight
+                            local_model_params[k] * topo_weight
                     )
                 else:
                     averaged_params[k] += (

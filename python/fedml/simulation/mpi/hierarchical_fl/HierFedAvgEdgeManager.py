@@ -24,11 +24,14 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         self.group = group
         self.network = network
 
+        self.num_of_model_params = 0
         if hasattr(self.args, 'enable_ns3') and self.args.enable_ns3:
             self.args.ns3_time = 0
-            self.args.ns3_time_arr = np.array([0. for _ in range(self.size - 1)])
+            self.args.ns3_time_arr = np.array([0. for _ in range(self.size - 1)])  # used in async mode
         self.trigger_dynamic_group_comm = True if self.args.group_comm_round <= 0 else False
-        self.num_of_model_params = 0
+
+        if self.args.group_comm_pattern == 'async-centralized':
+            self.w_group_list, self.sample_num_list, self.param_estimation_dict = None, None, None  # used in async mode
 
     def run(self):
         super().run()
@@ -83,6 +86,8 @@ class HierFedAVGEdgeManager(FedMLCommManager):
                                                                                 sampled_client_indexes,
                                                                                 group_to_data_size,
                                                                                 is_estimate)
+        if self.args.group_comm_pattern == 'async-centralized':
+            self.w_group_list, self.sample_num_list, self.param_estimation_dict = w_group_list, sample_num_list, param_estimation_dict
 
         self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
 
@@ -128,12 +133,15 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         # if global_model_params is None, edge will not train in this round
         if global_model_params is None:
             # async mode may fall in the case
-            self.send_model_to_cloud(0, None, None, None)
+            self.send_model_to_cloud(0, self.w_group_list, self.sample_num_list, self.param_estimation_dict)
         else:
             w_group_list, sample_num_list, param_estimation_dict = \
                 self.group.train(self.args.round_idx, global_model_params, sampled_client_indexes,
                                  group_to_data_size, is_estimate)
             self.send_model_to_cloud(0, w_group_list, sample_num_list, param_estimation_dict)
+
+            if self.args.group_comm_pattern == 'async-centralized':
+                self.w_group_list, self.sample_num_list, self.param_estimation_dict = w_group_list, sample_num_list, param_estimation_dict
 
         # if 0 < self.num_rounds <= self.args.round_idx or \
         #         self.args.enable_ns3 and 0 < self.args.time_budget <= self.args.ns3_time:
