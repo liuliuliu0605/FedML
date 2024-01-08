@@ -78,10 +78,13 @@ class HierFedAVGCloudAggregator(object):
     def aggregate_estimated_params(self):
         log_wandb = True if hasattr(self.args, 'enable_wandb') and self.args.enable_wandb else False
         agg_param_estimation_dict = agg_parameter_estimation(self.args, self.param_estimation_dict, 'psi', log_wandb)
+        del agg_param_estimation_dict['grad']
+        logging.info("Estimated params: {}".format(agg_param_estimation_dict))
         return agg_param_estimation_dict
 
     def aggregate(self):
         # Edge server may conduct partial aggregation multiple times, so cloud server will receive a model list
+        # if group_comm_round>100, only 100 results (including the last) are returned
         group_comm_round = len(self.sample_num_dict[0])
 
         for group_round_idx in range(group_comm_round):
@@ -95,7 +98,7 @@ class HierFedAVGCloudAggregator(object):
             # averaged_params = self._fedavg_aggregation_(model_list)
             averaged_params = self._fedavg_noniid_aggregation_(model_list)
             self.set_global_model_params(averaged_params)
-            self.test_on_cloud_for_all_clients(global_round_idx, group_round_idx=group_round_idx)
+            self.test_on_cloud_for_all_clients(global_round_idx, group_round_idx == group_comm_round-1)
 
         # update the global model which is cached in the cloud
         self.set_global_model_params(averaged_params)
@@ -116,7 +119,7 @@ class HierFedAVGCloudAggregator(object):
             # averaged_params = self._fedavg_aggregation_(model_list)
             averaged_params = self._fedavg_noniid_aggregation_(model_list)
             self.set_global_model_params(averaged_params)
-            self.test_on_cloud_for_all_clients(global_round_idx, group_round_idx=group_round_idx)
+            self.test_on_cloud_for_all_clients(global_round_idx, group_round_idx == group_comm_round-1)
 
         mixed_params_list = []
         for idx in range(self.worker_num):
@@ -147,7 +150,7 @@ class HierFedAVGCloudAggregator(object):
             # the weight is determined by the speed of edge servers
             averaged_params = self._fedavg_aggregation_(model_list)
             self.set_global_model_params(averaged_params)
-            self.test_on_cloud_for_all_clients(global_round_idx, group_round_idx=group_round_idx)
+            self.test_on_cloud_for_all_clients(global_round_idx, group_round_idx == group_comm_round-1)
 
         return averaged_params
 
@@ -272,7 +275,7 @@ class HierFedAVGCloudAggregator(object):
 
             logging.info("metric_result_in_current_round = {}".format(metric_result_in_current_round))
 
-    def test_on_cloud_for_all_clients(self, global_round_idx, group_round_idx):
+    def test_on_cloud_for_all_clients(self, global_round_idx, is_last_group_comm_round):
         if (
                 (
                         not self.args.enable_ns3 and
@@ -286,8 +289,7 @@ class HierFedAVGCloudAggregator(object):
                         self.args.enable_ns3 and
                         (
                                 0 < self.args.time_budget <= self.args.ns3_time
-                                or group_round_idx == self.args.group_comm_round - 1
-                                and self.args.ns3_time >= self.args.time_for_test
+                                or is_last_group_comm_round and self.args.ns3_time >= self.args.time_for_test
                                 # or self.args.ns3_time >= self.args.time_for_test
                         )
                 )

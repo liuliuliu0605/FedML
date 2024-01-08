@@ -76,11 +76,11 @@ class HierFedAVGEdgeManager(FedMLCommManager):
             )
 
         is_estimate = False
-        if (
-                self.args.round_idx == 0 and self.trigger_dynamic_group_comm
-                or self.args.enable_parameter_estimation
-        ):
-            is_estimate = True
+        # if (
+        #         self.args.round_idx == 0 and self.trigger_dynamic_group_comm
+        #         or self.args.enable_parameter_estimation
+        # ):
+        #     is_estimate = True
         w_group_list, sample_num_list, param_estimation_dict = self.group.train(self.args.round_idx,
                                                                                 global_model_params,
                                                                                 sampled_client_indexes,
@@ -124,10 +124,12 @@ class HierFedAVGEdgeManager(FedMLCommManager):
 
         # estimate parameters
         is_estimate = False
-        if (
-                self.args.round_idx == 0 and self.trigger_dynamic_group_comm
-                or self.args.enable_parameter_estimation
-        ):
+        # if (
+        #         self.args.round_idx == 0 and self.trigger_dynamic_group_comm
+        #         or self.args.enable_parameter_estimation
+        # ):
+        #     is_estimate = True
+        if self.args.enable_parameter_estimation:
             is_estimate = True
 
         # if global_model_params is None, edge will not train in this round

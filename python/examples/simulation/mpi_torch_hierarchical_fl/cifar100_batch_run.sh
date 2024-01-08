@@ -1,8 +1,8 @@
-CONFIG_PATH=config/cifar10_resnet20/fedml_config.yaml
+CONFIG_PATH=config/cifar100_mobilenet_v3/fedml_config.yaml
 RANDOM_SEED=0
 GROUP_NUM=9
 BASE_COMM_ROUND=0
-TIME_BUDGET=1000
+TIME_BUDGET=20000
 PARTITION_ALPHA=0.5
 GROUP_METHOD=hetero
 GROUP_ALPHA=10
@@ -12,10 +12,10 @@ GROUP_COMM_ROUND=1
 ACCESS_LINK_CAPACITY=1e7
 CORE_LINK_CAPACITY=1e10
 LAN_CAPACITY=1e11
-LOCAL_UPDATE_TIME=0.275
+LOCAL_UPDATE_TIME=0.9654
 WORKER_NUM=$(($GROUP_NUM+1))
-GPU_UTIL_PARSE_LIST=(localhost:3,2,3,2 localhost:2,3,2,3)
-#GPU_UTIL_PARSE_LIST=(localhost:3,1,3,3 localhost:3,1,3,3)
+#GPU_UTIL_PARSE_LIST=(localhost:7,7,6,6 localhost:6,6,7,7)
+GPU_UTIL_PARSE_LIST=(localhost:3,2,2,3 localhost:2,3,3,2)
 #GPU_UTIL_PARSE_LIST=(localhost:4,1,4,1 localhost:4,1,4,1)
 random_seed_list=()
 time_budget_list=()
@@ -45,12 +45,11 @@ do
     do
 
       if [ "${GROUP_COMM_PATTERN}" = "decentralized" ]; then
-#          group_comm_round_list=(0 1)
 #          group_comm_round_list=(1 10 3 30 5 50 7 70 100 200)
 #          topo_name_list=(complete 2d_torus ring star)
-#          group_comm_round_list=(5 50 7 70 100)
-#          topo_name_list=(complete 2d_torus)
 #          group_comm_round_list=(0 1 10 3 30)
+#          group_comm_round_list=(5 50 7 70 100)
+#          topo_name_list=(complete)
           group_comm_round_list=(0)
           topo_name_list=(complete)
         elif [ "${GROUP_COMM_PATTERN}" = "centralized" ];then
@@ -73,7 +72,7 @@ do
             fi
 
             GPU_UTIL_PARSE=${GPU_UTIL_PARSE_LIST[experiment_num%2]}
-            log_file="cifar10-group_method=$GROUP_METHOD-group_alpha=$GROUP_ALPHA-partition_alpha=$PARTITION_ALPHA-topo=$TOPO_NAME-group_comm_pattern=$GROUP_COMM_PATTERN-group_comm_round=$GROUP_COMM_ROUND.log"
+            log_file="cifar100-group_method=$GROUP_METHOD-group_alpha=$GROUP_ALPHA-partition_alpha=$PARTITION_ALPHA-topo=$TOPO_NAME-group_comm_pattern=$GROUP_COMM_PATTERN-group_comm_round=$GROUP_COMM_ROUND.log"
             echo ${experiment_num}_${log_file}
             nohup mpirun -np $WORKER_NUM \
                 -hostfile mpi_host_file \

@@ -1,3 +1,4 @@
+import json
 import logging
 import numpy as np
 
@@ -69,6 +70,13 @@ class HierFedAVGCloudManager(FedMLCommManager):
             'n': args.client_num_per_round,
             'avgN_minN': total_clients/args.group_num/min([len(self.group_to_client_indexes[i]) for i in range(args.group_num)])
         }
+
+        if self.trigger_dynamic_group_comm:
+            with open(args.estimation_param_file) as f:
+                estimation_params = json.load(f)
+                self.convergence_param_dict.update(
+                    estimation_params["group_method={}".format(args.group_method)]["group_alpha={}".format(args.group_alpha)]["partition_alpha={}".format(args.partition_alpha)]
+                )
 
         self.topo_action_objective_list = [[(0, None), None]]  # (action, objective)
 
@@ -177,10 +185,11 @@ class HierFedAVGCloudManager(FedMLCommManager):
                 global_model_params = self.aggregator.async_aggregate(expected_sender_id-1)
 
             # estimate parameters
-            if (
-                    self.args.round_idx == 0 and self.trigger_dynamic_group_comm
-                    or self.args.enable_parameter_estimation
-            ):
+            # if (
+            #         self.args.round_idx == 0 and self.trigger_dynamic_group_comm
+            #         or self.args.enable_parameter_estimation
+            # ):
+            if bool(param_estimation_dict):
                 self.convergence_param_dict.update(self.aggregator.aggregate_estimated_params())
                 # control_ratio = cal_control_ratio(self.args, self.convergence_param_dict, True)
 

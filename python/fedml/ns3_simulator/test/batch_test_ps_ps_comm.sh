@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 
-pattern=async-hfl
+pattern=pfl
 underlay=geantdistance
 ps_num=9
-model_size=2401488
+model_size=10000000
 #topo_name=complete
 #access_link_capacity=1000000
 #core_link_capacity=1000000000
 
-topo_name_list=(complete 2d_torus ring star)
+#topo_name_list=(complete 2d_torus ring star)
+topo_name_list=(2d_torus ring star)
 topo_name_list=(ring)
 access_link_capacity_list=(1000000 10000000 100000000 1000000000)
 core_link_capacity_list=(1000000 10000000 100000000 1000000000)
@@ -20,7 +21,7 @@ do
   do
     for core_link_capacity in ${core_link_capacity_list[@]};
     do
-      mpirun -np 9 python test_ps_ps_comm.py --pattern $pattern \
+      mpirun -np 10 python test_ps_ps_comm.py --pattern $pattern \
       --underlay $underlay --ps_num $ps_num \
       --topo_name $topo_name --model_size=$model_size \
       --access_link_capacity $access_link_capacity \

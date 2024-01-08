@@ -61,6 +61,7 @@ def add_args():
     parser.add_argument("--group_comm_round", type=int, default=1)
     parser.add_argument("--enable_ns3", action="store_true")
     parser.add_argument("--enable_dynamic_topo", action="store_true")
+    parser.add_argument("--enable_parameter_estimation", action="store_true")
 
     # ns3 arguments
     parser.add_argument("--access_link_capacity", type=float, default=1.0e+8)

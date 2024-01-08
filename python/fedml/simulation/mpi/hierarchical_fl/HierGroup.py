@@ -94,13 +94,17 @@ class HierGroup(FedAvgAPI):
                 w_locals.append((client.get_sample_number(), w_local))
 
             # aggregate local weights
-            # TODO: debug
-            w_group_list.append((global_round_idx, self._aggregate_noniid_avg(w_locals)))
-            # w_group_list.append((global_round_idx, self._aggregate(w_locals)))
-            sample_num_list.append(self.get_sample_number(sampled_client_indexes[group_round_idx]))
-
-            # update the group weight
-            w_group = w_group_list[-1][1]
+            # when group_comm_round is larger than 100, only a subset is saved
+            if self.args.group_comm_round <= 100 or\
+                    self.args.group_comm_round > 100 and group_round_idx % (self.args.group_comm_round//100+1) == 0 or \
+                    group_round_idx == self.args.group_comm_round-1:
+                w_group_list.append((global_round_idx, self._aggregate_noniid_avg(w_locals)))
+                # w_group_list.append((global_round_idx, self._aggregate(w_locals)))
+                sample_num_list.append(self.get_sample_number(sampled_client_indexes[group_round_idx]))
+                # update the group weight
+                w_group = w_group_list[-1][1]
+            else:
+                w_group = self._aggregate_noniid_avg(w_locals)
         return w_group_list, sample_num_list, param_estimation_dict
 
     def _estimate(self, w):
@@ -113,6 +117,7 @@ class HierGroup(FedAvgAPI):
         param_estimation_dict = {}
 
         for idx, client in enumerate(sampled_client_list):
+            logging.info("Group ID : {} / Client ID : {}".format(self.idx, client.client_idx))
             # scaled_loss_factor = self.args.group_num * self.args.client_num_per_round * client.local_sample_number / \
             #                      data_size_dict[group_round_idx]
             scaled_loss_factor = self.args.group_num * group_client_num * client.local_sample_number / total_data_size

@@ -32,6 +32,7 @@ client_num_list = [client_num for i in range(ps_num)]
 underlay = args.underlay
 access_link_capacity = args.access_link_capacity
 core_link_capacity = args.core_link_capacity
+disable_optimization = args.disable_optimization
 
 # initialize network
 network = Network(access_link_capacity=access_link_capacity,
@@ -46,10 +47,10 @@ topology_manager.generate_custom_topology(args)
 network.read_underlay_graph(underlay_name=underlay)
 
 network.select_edge_pses(ps_num=ps_num, method='mhrw')
-print("Edges: {}".format(network.edge_ps_id_list))
+# print("Edges: {}".format(network.edge_ps_id_list))
 network.select_cloud_ps(method='centroid')
-print("Cloud: {}".format(network.cloud_id))
-network.connect_pses(topology_manager, enable_optimization=True)
+# print("Cloud: {}".format(network.cloud_id))
+network.connect_pses(topology_manager, enable_optimization=not disable_optimization)
 # network.add_edge(0, 2)
 # network.add_edge(0, 3)
 
@@ -58,7 +59,7 @@ network.construct_network(graph_partition_method='random')
 
 # network.plot_underlay_graph(save_path="underlay.pdf")
 # network.plot_ps_connectivity_graph(save_path="connectivity.pdf")
-network.plot_ps_overlay_topology(save_path="overlay.pdf")
+# network.plot_ps_overlay_topology(save_path="overlay.pdf")
 
 if pattern == 'pfl':
     app = network.set_pfl_step(model_size, start_time=0, stop_time=10000000, phases=1, initial_message='0')
@@ -87,23 +88,17 @@ elif pattern in ['async-hfl']:
         time_consuming_matrix[0, i+1] = app.time_consuming_matrix[0, 1]
         print(app.time_consuming_matrix[0, 1])
 
-# aa.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
-# print(aa.time_consuming_matrix)
-# print(time_consuming_matrix)
-
-if time_consuming_matrix is not None:
+if time_consuming_matrix is not None and network.system_id == 0:
     print("%.2f MB: total=%.5fs (%ds)" %
           (model_size / 1e6,
            np.max(time_consuming_matrix),
            t_b - t_a))
-    print("receive time: {}".format(time_consuming_matrix.max(axis=0)))
-    print("mean receive time: {}".format(time_consuming_matrix.max(axis=0).mean()))
-print("-" * 50)
+    # print("receive time: {}".format(time_consuming_matrix.max(axis=0)))
+    # print("mean receive time: {}".format(time_consuming_matrix.max(axis=0).mean()))
 
 if enable_mpi:
     # destroy mpi if mpi mode
     ns.mpi.MpiInterface.Disable()
-
 
 # if network.system_id == 0:
 #     if pattern == 'pfl' or pattern == 'rar':
