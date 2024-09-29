@@ -85,15 +85,20 @@ class HierFedAVGCloudAggregator(object):
     def aggregate(self):
         # Edge server may conduct partial aggregation multiple times, so cloud server will receive a model list
         # if group_comm_round>100, only 100 results (including the last) are returned
-        group_comm_round = len(self.sample_num_dict[0])
+        max_group_round_idx = 0
+        for i in range(len(self.sample_num_dict)):
+            if len(self.sample_num_dict[i]) > len(self.sample_num_dict[max_group_round_idx]):
+                max_group_round_idx = i
+
+        group_comm_round = len(self.sample_num_dict[max_group_round_idx])
 
         for group_round_idx in range(group_comm_round):
             model_list = []
-            global_round_idx = self.model_dict[0][group_round_idx][0]
+            global_round_idx = self.model_dict[max_group_round_idx][group_round_idx][0]
 
             for idx in range(0, self.worker_num):
-                model_list.append((self.sample_num_dict[idx][group_round_idx],
-                                   self.model_dict[idx][group_round_idx][1]))
+                model_list.append((self.sample_num_dict[idx][min(group_round_idx, len(self.sample_num_dict[idx])-1)],
+                                   self.model_dict[idx][min(group_round_idx, len(self.sample_num_dict[idx])-1)][1]))
 
             # averaged_params = self._fedavg_aggregation_(model_list)
             averaged_params = self._fedavg_noniid_aggregation_(model_list)
@@ -107,14 +112,19 @@ class HierFedAVGCloudAggregator(object):
 
     def mix(self, topology_manager):
         # edge server may conduct partial aggregation multiple times, so cloud server will receive a model list
-        group_comm_round = len(self.sample_num_dict[0])
+        max_group_round_idx = 0
+        for i in range(len(self.sample_num_dict)):
+            if len(self.sample_num_dict[i]) > len(self.sample_num_dict[max_group_round_idx]):
+                max_group_round_idx = i
+
+        group_comm_round = len(self.sample_num_dict[max_group_round_idx])
 
         for group_round_idx in range(group_comm_round):
             model_list = []
-            global_round_idx = self.model_dict[0][group_round_idx][0]
+            global_round_idx = self.model_dict[max_group_round_idx][group_round_idx][0]
 
             for idx in range(0, self.worker_num):
-                model_list.append((1, self.model_dict[idx][group_round_idx][1]))
+                model_list.append((1, self.model_dict[idx][min(group_round_idx, len(self.model_dict[idx])-1)][1]))
 
             # averaged_params = self._fedavg_aggregation_(model_list)
             averaged_params = self._fedavg_noniid_aggregation_(model_list)

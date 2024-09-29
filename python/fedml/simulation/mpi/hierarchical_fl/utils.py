@@ -11,13 +11,15 @@ from sklearn.cluster import KMeans
 from math import sqrt
 from ns import ns
 from PIL import Image
+import scipy
 
 
 def time_consuming_one_round(
-        args, process_id, mpi_comm, network, sampled_group_to_client_indexes, model_size, system_id_list
+        args, process_id, mpi_comm, network, sampled_group_to_client_indexes, model_size, group_comm_round_list,
+        system_id_list
 ):
     # model_size=1000
-    config_param = "{}-{}-{}".format(args.group_comm_pattern, args.group_comm_round,
+    config_param = "{}-{}-{}".format(args.group_comm_pattern, group_comm_round_list,
                                      network.topology_manager.topology if network.topology_manager is not None else 'none')
     if args.fast_mode and config_param in network.time_history:
         logging.info("Rank {} runs in fast mode".format(process_id))
@@ -36,11 +38,17 @@ def time_consuming_one_round(
 
         # run simulation
         if args.group_comm_pattern == 'decentralized':
-            delay_matrix, region_delay, global_delay = network.run_fl_pfl(model_size=model_size,
-                                                                          group_comm_round=args.group_comm_round,
-                                                                          mix_comm_round=1,
-                                                                          start_time=0, stop_time=10000000,
-                                                                          fast_forward=args.fast_mode)
+            # delay_matrix, region_delay, global_delay = network.run_fl_pfl(model_size=model_size,
+            #                                                               group_comm_round=args.group_comm_round,
+            #                                                               mix_comm_round=1,
+            #                                                               start_time=0, stop_time=10000000,
+            #                                                               fast_forward=args.fast_mode)
+            # this is a temporary solution to different taus
+            delay_matrix, region_delay, global_delay = network.run_fl_pfl2(model_size=model_size,
+                                                                           group_comm_round_list=group_comm_round_list,
+                                                                           mix_comm_round=1,
+                                                                           start_time=0, stop_time=10000000,
+                                                                           fast_forward=True)
         elif args.group_comm_pattern == 'centralized':
             delay_matrix, region_delay, global_delay = network.run_fl_hfl(model_size=model_size,
                                                                           group_comm_round=args.group_comm_round,
@@ -119,37 +127,90 @@ def calculate_optimal_tau(args, convergence_param_dict, time_dict, p, num_of_mod
     mix_cost = time_dict['mix_cost']
     U = time_dict['budget']
 
-    def h(tau):
-        a1 = 16 * L * loss_delta / sqrt(K*n_tilde) \
-             + 8 * sigma / sqrt(K*n_tilde) \
-             + 24 * N * (N-n) * sqrt(n_tilde) * (sigma + 18 * K * gamma) / N_tilde /(N-1) / n / sqrt(K) \
-             + 432 * avgN_minN * sqrt(K) * (N - n) * sqrt(n_tilde) * psi / (N-1) / n
+    # # same tau
+    if not args.enable_diff_tau:
+        print("!!!!debug")
+        print(p, loss_delta, L, sigma, gamma, psi, K, zeta, N, N_tilde, n, n_tilde, avgN_minN, agg_cost, mix_cost, U)
+        exit
+        def h(tau):
+            a1 = 16 * L * loss_delta / sqrt(K * n_tilde) \
+                 + 8 * sigma / sqrt(K * n_tilde) \
+                 + 24 * N * (N - n) * sqrt(n_tilde) * (sigma + 18 * K * gamma) / N_tilde / (N - 1) / n / sqrt(K) \
+                 + 432 * avgN_minN * sqrt(K) * (N - n) * sqrt(n_tilde) * psi / (N - 1) / n
 
-        a2 = 24 * n_tilde * (sigma + 18 * K * gamma) * zeta
-        a3 = 768 * n_tilde * sigma * zeta
-        a4 = 768 * 16 * n_tilde * K * psi * zeta
+            a2 = 24 * n_tilde * (sigma + 18 * K * gamma) * zeta
+            a3 = 768 * n_tilde * sigma * zeta
+            a4 = 768 * 16 * n_tilde * K * psi * zeta
 
-        d_agg = agg_cost
-        d_mix = mix_cost
+            d_agg = agg_cost
+            d_mix = mix_cost
 
-        phi = (tau * d_agg + d_mix) / (U * tau)
+            # T_mix = np.min(U / (tau * d_agg + d_mix))
+            # T = T_mix * tau
+            T_mix = min((U - args.ns3_time) / (tau * d_agg + d_mix))
+            T = args.round_idx + T_mix * tau
+            phi = 1 / T
 
-        A = a1 * sqrt(phi)
-        B = phi * (a2 + a3 * tau / p + a4 * tau**2 / p**2)
-        H = A + B
+            A = a1 * sqrt(phi)
+            B = phi * (a2 + a3 * tau / p + a4 * tau ** 2 / p ** 2)
+            H = A + B
 
-        return H
+            return H
 
-    opt_tau = 1
-    opt_value = sys.maxsize
-    for tau in range(1, 1001):
-        h_value = h(tau)
-        if h_value < opt_value:
-            opt_tau = tau
-            opt_value = h_value
+        opt_tau = 1
+        opt_value = sys.maxsize
+        for tau in range(1, 1001):
+            h_value = h(tau)
+            if h_value < opt_value:
+                opt_tau = tau
+                opt_value = h_value
+        opt_tau = np.array([opt_tau] * args.group_num, dtype=int)
+    else:
+        # different tau
+        def h2(tau_list):
+            tau_max = np.max(tau_list)
+            tau_mean = np.mean(tau_list)
+            tau_square_mean = np.mean(tau_list ** 2)
+            mu = tau_mean / tau_max
+            mu = 1
+
+            a1 = 16 * L * loss_delta / sqrt(K * n_tilde * mu) \
+                 + 8 * sigma / sqrt(K * n_tilde * mu) \
+                 + 24 * N * (N - n) * sqrt(n_tilde) * (sigma + 18 * K * gamma * mu) / N_tilde / (N - 1) / n / sqrt(K * mu) \
+                 + 432 * avgN_minN * sqrt(K * mu) * (N - n) * sqrt(n_tilde) * psi / (N - 1) / n
+
+            a2 = 24 * n_tilde * (sigma + 18 * K * gamma * mu) * zeta
+            a3 = 768 * n_tilde * sigma * zeta
+            a4 = 768 * 16 * n_tilde * K * psi * zeta * mu
+
+            d_agg = agg_cost
+            d_mix = mix_cost
+
+            # T_mix = np.min(U / (tau_list * d_agg + d_mix))
+            # T = T_mix * tau_mean
+            T_mix = min((U-args.ns3_time) / (tau_list * d_agg + d_mix))
+            T = args.round_idx + T_mix * tau_mean
+            phi = 1 / T
+
+            A = a1 * sqrt(phi)
+            B = phi * (a2 + a3 * tau_mean / p + a4 * tau_square_mean / p ** 2)
+            H = A + B
+
+            return H
+
+        tau_ini_2 = np.array([1.0] * args.group_num)
+        bounds = [(1, None)] * args.group_num
+        res = scipy.optimize.minimize(h2, tau_ini_2, bounds=bounds)
+        opt_tau = np.array([max(round(tau), 1) for tau in res.x])
+        opt_value = h2(opt_tau)
 
     if args.enable_wandb:
-        wandb.log({"Estimation/tau": opt_tau, "comm_round": args.round_idx})
+        wandb.log({"Estimation/tau": np.mean(opt_tau), "comm_round": args.round_idx})
+        wandb.log({"Estimation/tau_min": np.min(opt_tau), "comm_round": args.round_idx})
+        wandb.log({"Estimation/tau_max": np.max(opt_tau), "comm_round": args.round_idx})
+        if args.enable_diff_tau:
+            for i, tau in enumerate(opt_tau):
+                wandb.log({"Estimation/tau(%d)" % i: tau, "comm_round": args.round_idx})
         wandb.log({"Estimation/objective": opt_value, "comm_round": args.round_idx})
 
     # logging.info(
@@ -173,18 +234,18 @@ def cal_control_ratio(args, convergence_param_dict, log_wandb=False):
     avgN_minN = convergence_param_dict['avgN_minN']
     grad_square = convergence_param_dict['grad_square']
 
-    a = 16 * L * loss_delta / sqrt(K * N_tilde) \
+    a = 16 * L * loss_delta / sqrt(K * N_tilde)
 
     b = 8 * sigma / sqrt(K * N_tilde) \
         + 24 * N_tilde * (sigma + 18 * K * gamma) \
-        + 768 * N_tilde * (sigma + 16 * K * psi)  \
+        + 768 * N_tilde * (sigma + 16 * K * psi) \
         # + 24 * N * (N - n) * sqrt(n_tilde) * (sigma + 18 * K * gamma) / N_tilde / (N - 1) / n / sqrt(K) \
-        # + 432 * avgN_minN * sqrt(K) * (N - n) * sqrt(n_tilde) * psi / (N - 1) / n
+    # + 432 * avgN_minN * sqrt(K) * (N - n) * sqrt(n_tilde) * psi / (N - 1) / n
 
     # print("~~~~~~~~~~~~~{}-{}-{}-{}".format(L, loss_delta, K, n_tilde))
     # print("~~~~~~~~~~~~{}-{}-{}".format(grad_square, a, b))
     # exit(0)
-    control_ratio = (grad_square - a)/b
+    control_ratio = (grad_square - a) / b
 
     if log_wandb:
         wandb.log({"Estimation/control_ratio": control_ratio, "comm_round": args.round_idx})
@@ -279,7 +340,7 @@ def adjust_topo(args, topo_action_objective_list, network):
         # add edge with the lowest latency
         minimum = sys.maxsize
         for i in range(len(topology)):
-            for j in range(i+1, len(topology[i])):
+            for j in range(i + 1, len(topology[i])):
                 if topology[i, j] == 0:
                     latency = network.get_latency(i, j)
                     if latency < minimum:
@@ -291,14 +352,14 @@ def adjust_topo(args, topo_action_objective_list, network):
         # remove edge with the highest latency
         maximum = -1
         for i in range(len(topology)):
-            for j in range(i+1, len(topology[i])):
+            for j in range(i + 1, len(topology[i])):
                 if topology[i, j] > 0 and \
                         len(network.topology_manager.get_in_neighbor_idx_list(i)) > 2 and \
                         len(network.topology_manager.get_in_neighbor_idx_list(j)) > 2:
                     latency = network.get_latency(i, j)
                     if latency > maximum:
                         maximum = latency
-                        choice = (i,j)
+                        choice = (i, j)
         if choice is not None:
             network.remove_edge(*choice)
 
@@ -309,7 +370,6 @@ def adjust_topo(args, topo_action_objective_list, network):
 
 
 def stats_group(group_to_client_indexes, train_data_local_dict, train_data_local_num_dict, class_num, args):
-
     xs = [i for i in range(class_num)]
     ys = []
     keys = []
@@ -325,7 +385,7 @@ def stats_group(group_to_client_indexes, train_data_local_dict, train_data_local
 
         count_vector = np.zeros(class_num)
         count_vector[labels] = counts
-        ys.append(count_vector/count_vector.sum())
+        ys.append(count_vector / count_vector.sum())
         keys.append("Group {}".format(group_idx))
 
         if args.enable_wandb:
@@ -489,22 +549,23 @@ if __name__ == '__main__':
 
         if group_alpha == 5:
             # opt_tau = 35
-            cifar_params =  {'N_tilde': 985.457284505729, 'n_tilde': 98.22344710621157, 'N': 1000, 'n': 100,
-                             'avgN_minN': 1.3888888888888888, 'sigma': 13.636278193897414, 'L': 11.951036648737805,
-                             'gamma': 23.952738702108928, 'psi': 1.5046829705776297, 'K': 45.74451084941445, 'loss': 2.4747159191000696,
-                             'local_update_time': 0.5466945874508538, 'cum_grad_delta_square': 293724.68497117446,
-                             'zeta': 0.030683999249572606, 'grad_square': 2.6138900524440487}
+            cifar_params = {'N_tilde': 985.457284505729, 'n_tilde': 98.22344710621157, 'N': 1000, 'n': 100,
+                            'avgN_minN': 1.3888888888888888, 'sigma': 13.636278193897414, 'L': 11.951036648737805,
+                            'gamma': 23.952738702108928, 'psi': 1.5046829705776297, 'K': 45.74451084941445,
+                            'loss': 2.4747159191000696,
+                            'local_update_time': 0.5466945874508538, 'cum_grad_delta_square': 293724.68497117446,
+                            'zeta': 0.030683999249572606, 'grad_square': 2.6138900524440487}
             cifar_params['psi'] = 0.9431
             cifar_params['gamma'] = 20.868
             cifar_params['L'] = 9.483
             cifar_params['sigma'] = 35.422
         elif group_alpha == 0.05:
             # opt_tau = 13
-            cifar_params =  {'N_tilde': 985.457284505729, 'n_tilde': 98.22344710621157, 'N': 1000, 'n': 100,
-                             'avgN_minN': 1.3888888888888888, 'sigma': 13.636278193897414, 'L': 11.951036648737805,
-                             'gamma': 2.927, 'psi': 40.48, 'K': 45.74451084941445, 'loss': 2.4747159191000696,
-                             'local_update_time': 0.5466945874508538, 'cum_grad_delta_square': 293724.68497117446,
-                             'zeta': 0.041, 'grad_square': 2.6138900524440487}
+            cifar_params = {'N_tilde': 985.457284505729, 'n_tilde': 98.22344710621157, 'N': 1000, 'n': 100,
+                            'avgN_minN': 1.3888888888888888, 'sigma': 13.636278193897414, 'L': 11.951036648737805,
+                            'gamma': 2.927, 'psi': 40.48, 'K': 45.74451084941445, 'loss': 2.4747159191000696,
+                            'local_update_time': 0.5466945874508538, 'cum_grad_delta_square': 293724.68497117446,
+                            'zeta': 0.041, 'grad_square': 2.6138900524440487}
             cifar_params['psi'] = 27.016
             cifar_params['gamma'] = 4.372
             cifar_params['L'] = 8.315
@@ -531,10 +592,12 @@ if __name__ == '__main__':
         elif group_alpha == 0.05:
             # opt_tau = 22
             # cifar100, group_alpha=0.01
-            cifar_params = {'N_tilde': 990.7201393675736, 'n_tilde': 98.40424778761061, 'N': 1000, 'n': 100, 'avgN_minN': 1.3071895424836601,
-             'sigma': 37.284, 'L': 8.324539218501027, 'gamma': 9.638, 'psi': 20.465,
-             'K': 46.09412893597616, 'loss': 6.960351847540296, 'local_update_time': 0.9825921302211116,
-             'cum_grad_delta_square': 3194317.8920561844, 'zeta': 0.0028, 'grad_square': 1.1858041433614863}
+            cifar_params = {'N_tilde': 990.7201393675736, 'n_tilde': 98.40424778761061, 'N': 1000, 'n': 100,
+                            'avgN_minN': 1.3071895424836601,
+                            'sigma': 37.284, 'L': 8.324539218501027, 'gamma': 9.638, 'psi': 20.465,
+                            'K': 46.09412893597616, 'loss': 6.960351847540296, 'local_update_time': 0.9825921302211116,
+                            'cum_grad_delta_square': 3194317.8920561844, 'zeta': 0.0028,
+                            'grad_square': 1.1858041433614863}
             cifar_params['psi'] = 4.003
             cifar_params['gamma'] = 115.683
             cifar_params['L'] = 10.199
@@ -546,12 +609,13 @@ if __name__ == '__main__':
             'budget': 20000
         }
 
-
     p = 1.0
     convergence_param_dict = cifar_params
 
+
     class ARGS:
         enable_wandb = False
+
 
     opt_tau = calculate_optimal_tau(ARGS(), convergence_param_dict, time_dict, p, num_of_model_params=0)
     print(opt_tau)

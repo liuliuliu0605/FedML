@@ -245,3 +245,5 @@ python/app/fedllm/config/fedml_config.yaml
 python/fedml/computing/scheduler/scheduler_entry/fedml_job_pack/fedml_job_entry_pack.sh
 python/fedml/computing/scheduler/scheduler_entry/hello_world/fedml_job_entry_pack.sh
 python/fedml/computing/scheduler/scheduler_entry/serve_mnist/fedml_job_entry_pack.sh
+
+python/examples/simulation/mpi_torch_hierarchical_fl/bak/*

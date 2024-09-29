@@ -59,8 +59,11 @@ class HierGroup(FedAvgAPI):
         for group_round_idx in range(self.args.group_comm_round):
             data_size = 0
             for group_idx, client_idx_list in sampled_client_indexes.items():
-                data_size += self.get_sample_number(client_idx_list[group_round_idx])
+                if group_round_idx < len(client_idx_list):
+                    data_size += self.get_sample_number(client_idx_list[group_round_idx])
             data_size_dict[group_round_idx] = data_size
+        print("++++++++{}-{}-{}-{}".format(self.idx, self.args.group_comm_round,
+                                        [len(sampled_client_indexes[k]) for k in sampled_client_indexes],data_size_dict))
 
         w_group = w
         w_group_list = []

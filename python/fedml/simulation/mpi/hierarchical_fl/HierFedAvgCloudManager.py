@@ -55,6 +55,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
             self.args.ns3_time_arr = np.array([0. for _ in range(self.size-1)])
         self.trigger_dynamic_group_comm = True if self.args.group_comm_round <= 0 else False
         self.args.group_comm_round = 1 if self.args.group_comm_round <= 0 else self.args.group_comm_round
+        self.group_comm_round_list = np.array([self.args.group_comm_round] * self.args.group_num)
 
         self.num_of_model_params = 0
 
@@ -136,7 +137,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
             # time consumed int the coming round
             time_consuming_one_round(
                 self.args, self.rank, self.comm, self.network, sampled_group_to_client_indexes,
-                self.num_of_model_params * 4, list(range(1, self.size))
+                self.num_of_model_params * 4, self.group_comm_round_list, list(range(1, self.size))
             )
 
     def register_message_receive_handlers(self):
@@ -206,13 +207,19 @@ class HierFedAVGCloudManager(FedMLCommManager):
                 assert self.args.enable_ns3 is True
                 p = cal_mixing_consensus_speed(self.args, self.topology_manager.topology)
 
-                config_param = "{}-{}-{}".format(self.args.group_comm_pattern, self.args.group_comm_round,
+                config_param = "{}-{}-{}".format(self.args.group_comm_pattern, self.group_comm_round_list,
                                                  self.network.topology_manager.topology if self.network.topology_manager is not None else 'none')
                 data = self.network.get_history(config_param)
 
+                # time_dict = {
+                #     "agg_cost": data[1].mean() / self.args.group_comm_round,
+                #     "mix_cost": data[2].mean(),
+                #     "budget": self.args.time_budget
+                # }
+
                 time_dict = {
-                    "agg_cost": data[1].mean() / self.args.group_comm_round,
-                    "mix_cost": data[2].mean(),
+                    "agg_cost": data[1] / self.group_comm_round_list,
+                    "mix_cost": data[2],
                     "budget": self.args.time_budget
                 }
 
@@ -220,8 +227,12 @@ class HierFedAVGCloudManager(FedMLCommManager):
                 next_group_comm_round, objective_value = calculate_optimal_tau(
                     self.args, self.convergence_param_dict, time_dict, p, self.num_of_model_params
                 )
-                self.args.group_comm_round = next_group_comm_round
+                self.group_comm_round_list = next_group_comm_round
                 self.topo_action_objective_list[-1][1] = objective_value
+
+                print("!!!!agg_cost{}".format(time_dict["agg_cost"]))
+                print("!!!!mix_cost{}".format(time_dict["mix_cost"]))
+                print("!!!!group_comm_round_list{}".format(self.group_comm_round_list))
 
             # adjust topology if enabled
             if self.args.enable_dynamic_topo:
@@ -229,8 +240,10 @@ class HierFedAVGCloudManager(FedMLCommManager):
 
             # sample clients
             sampled_group_to_client_indexes = {group_idx: [] for group_idx in range(self.args.group_num)}
-            for group_comm_idx in range(self.args.group_comm_round):
+            for group_comm_idx in range(max(self.group_comm_round_list)):
                 for group_idx, client_num_per_round in enumerate(self.group_to_client_num_per_round):
+                    if group_comm_idx >= self.group_comm_round_list[group_idx]:
+                        continue
                     client_num_in_total = len(self.group_to_client_indexes[group_idx])
                     sampled_client_indexes = self.aggregator.client_sampling(
                         self.args.global_round_idx,
@@ -278,7 +291,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
             if self.args.enable_ns3:
                 time_consuming_one_round(
                     self.args, self.rank, self.comm, self.network, sampled_group_to_client_indexes,
-                    self.num_of_model_params * 4, list(range(1, self.size))
+                    self.num_of_model_params * 4, self.group_comm_round_list, list(range(1, self.size))
                 )
 
     def send_message_init_config(self, receive_id, global_model_params, total_client_indexes,
@@ -295,7 +308,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
             message.add_params(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER, self.topology_manager)
         # if enabling dynamic group communication, the default group_comm_round is set 1
         if self.trigger_dynamic_group_comm:
-            message.add_params(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND, self.args.group_comm_round)
+            message.add_params(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND, self.group_comm_round_list)
         self.send_message(message)
 
     def send_message_sync_model_to_edge(
@@ -314,7 +327,7 @@ class HierFedAVGCloudManager(FedMLCommManager):
         # if self.topology_manager is not None:
         #     message.add_params(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER, self.topology_manager)
         if self.trigger_dynamic_group_comm:
-            message.add_params(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND, self.args.group_comm_round)
+            message.add_params(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND, self.group_comm_round_list)
         if self.args.enable_dynamic_topo:
             message.add_params(MyMessage.MSG_ARG_KEY_ADJUST_TOPO, self.topo_action_objective_list[-1][0])
         self.send_message(message)

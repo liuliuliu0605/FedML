@@ -32,10 +32,13 @@ ns.core.Config.SetDefault("ns3::TcpSocket::RcvBufSize", ns.core.UintegerValue(BU
 class Network:
 
     def __init__(self, access_link_capacity, core_link_capacity, lan_capacity,
-                 protocol='tcp', mpi_comm=None, packet_size=1448, verbose=False, seed=None):
+                 protocol='tcp', mpi_comm=None, packet_size=1448, verbose=False, seed=None,
+                 access_link_ratio=None, lan_ratio=None):
         self.access_link_capacity = int(access_link_capacity)  # bps
         self.core_link_capacity = int(core_link_capacity)  # bps
         self.lan_capacity = int(lan_capacity)    # bps
+        self.access_link_ratio = access_link_ratio
+        self.lan_capacity_ratio = lan_ratio
         self.protocol = protocol
         self.mpi_comm = mpi_comm
         self.system_id = mpi_comm.Get_rank() if mpi_comm is not None else 0
@@ -328,6 +331,10 @@ class Network:
             ps_backbone = ns.network.NodeContainer()
             ps_backbone.Add(self.pses.Get(i))
             ps_backbone.Add(self.backbone_routers.Get(_id))
+
+            if self.access_link_ratio is not None:
+                p2p.SetDeviceAttribute("DataRate", ns.core.StringValue("{:f}bps".format(self.access_link_capacity*self.access_link_ratio[self._map_ps_overlay_loc(i)])))
+
             devices = p2p.Install(ps_backbone)
             interfaces = ipv4_n.Assign(devices)
             ipv4_n.NewNetwork()
@@ -358,6 +365,11 @@ class Network:
 
             # TODO: if backbone router is added, communication between PSes will be influenced, maybe a loop exists.
             # lan_nodes.Add(self.backbone_routers.Get(_id))
+
+            if self.lan_capacity_ratio is not None:
+                # self.client_num_list.append(overlay_client_num_list[self._map_ps_overlay_loc(i)])
+                csma.SetChannelAttribute("DataRate",
+                                         ns.core.StringValue("{:f}bps".format(self.lan_capacity*self.lan_capacity_ratio[self._map_ps_overlay_loc(i)])))
 
             devices = csma.Install(lan_nodes)
             interfaces = ipv4_n.Assign(devices)
@@ -786,6 +798,54 @@ class Network:
 
     def get_history(self, config_param):
         return self.time_history[config_param][-1]
+
+    def run_fl_pfl2(self, model_size, group_comm_round_list=[1], mix_comm_round=1, start_time=0, stop_time=10000000,
+                   fast_forward=False):
+        virtual_group_comm_round_list = None
+        if fast_forward:
+            virtual_group_comm_round_list = group_comm_round_list
+            group_comm_round = 1
+
+        ps_client_distribution_list, client_ps_aggregation_list = self.set_fl_step(model_size,
+                                                                                   start_time=start_time,
+                                                                                   stop_time=stop_time,
+                                                                                   phases=group_comm_round)
+        ps_ps_mix = self.set_pfl_step(model_size,
+                                      start_time=start_time,
+                                      stop_time=stop_time,
+                                      phases=mix_comm_round,
+                                      initial_message=None)
+
+        def ps_receive_model_from_clients(params):
+            mix_comm, agg_comm, virtual_group_comm_round= params
+            if virtual_group_comm_round is None:
+                mix_comm.generate_message('hello')
+            else:
+                agg_time_in_a_round = agg_comm.get_rcv_time()
+                delay = agg_time_in_a_round * (virtual_group_comm_round-1)
+                agg_comm.update_rcv_time(agg_time_in_a_round * virtual_group_comm_round)
+                mix_comm.generate_message('hello', delay=delay)
+
+        for i in range(self.edge_ps_num):
+            ps_agg_communicator = client_ps_aggregation_list[i].communicator_list[0]  # index 0 refers to ps communicator
+            ps_mix_communicator = ps_ps_mix.communicator_list[i]
+            ps_agg_communicator.register_finish_callback(ps_receive_model_from_clients,
+                                                         params=(ps_mix_communicator, ps_agg_communicator, virtual_group_comm_round_list[i]))
+
+        start_of_simulation = ns.core.Simulator.Now().GetSeconds()
+        ns.core.Simulator.Run()
+        ns.core.Simulator.Destroy()
+        for ps_client_distribution, client_ps_aggregation in zip(ps_client_distribution_list, client_ps_aggregation_list):
+            ps_client_distribution.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
+            client_ps_aggregation.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
+
+        ps_ps_mix.gather_time_consuming_matrix(start_of_simulation=start_of_simulation)
+        ps_ps_delay_matrix = ps_ps_mix.time_consuming_matrix
+        # print(self.system_id, ps_ps_delay_matrix)
+        ps_agg_delay = np.array([client_ps_aggregation.time_consuming_matrix[:, 0].max() for client_ps_aggregation in client_ps_aggregation_list])
+        ps_mix_delay = np.array([ps_ps_delay_matrix[i, :].max()-ps_agg_delay[i] for i in range(self.edge_ps_num)])
+
+        return ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay
 
     def run_fl_pfl(self, model_size, group_comm_round=1, mix_comm_round=1, start_time=0, stop_time=10000000,
                    fast_forward=False):

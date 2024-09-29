@@ -52,7 +52,7 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         group_to_data_size = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_TO_DATA_SIZE)
         edge_index = msg_params.get(MyMessage.MSG_ARG_KEY_EDGE_INDEX)
         topology_manager = msg_params.get(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER)
-        group_comm_round = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND)
+        group_comm_round_list = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND)
 
         self.group.setup_clients(total_client_indexes[edge_index])
         self.args.round_idx = 0
@@ -65,14 +65,16 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         for k in global_model_params:
             self.num_of_model_params += global_model_params[k].numel()
 
-        if group_comm_round is not None:
-            self.args.group_comm_round = group_comm_round
+        if group_comm_round_list is not None:
+            self.args.group_comm_round = group_comm_round_list[self.get_sender_id()-1]
+        else:
+            group_comm_round_list = [self.args.group_comm_round] * self.args.group_num
 
         if self.args.enable_ns3:
             # time consumed in the current round
             time_consuming_one_round(
                 self.args, self.rank, self.comm, self.network, sampled_client_indexes,
-                self.num_of_model_params * 4, list(range(1, self.size))
+                self.num_of_model_params * 4, group_comm_round_list, list(range(1, self.size))
             )
 
         is_estimate = False
@@ -98,14 +100,16 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         global_model_params = msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS)
         edge_index = msg_params.get(MyMessage.MSG_ARG_KEY_EDGE_INDEX)
         # topology_manager = msg_params.get(MyMessage.MSG_ARG_KEY_TOPOLOGY_MANAGER)
-        group_comm_round = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND)
+        group_comm_round_list = msg_params.get(MyMessage.MSG_ARG_KEY_GROUP_COMM_ROUND)
         adjust_topo = msg_params.get(MyMessage.MSG_ARG_KEY_ADJUST_TOPO)
 
         self.args.round_idx += 1
 
         # group comm round is adjusted if enabled
-        if group_comm_round is not None:
-            self.args.group_comm_round = group_comm_round
+        if group_comm_round_list is not None:
+            self.args.group_comm_round = group_comm_round_list[self.get_sender_id()-1]
+        else:
+            group_comm_round_list = [self.args.group_comm_round] * self.args.group_num
 
         # adjust topo if enabled
         if adjust_topo is not None:
@@ -119,7 +123,7 @@ class HierFedAVGEdgeManager(FedMLCommManager):
         if self.args.enable_ns3:
             time_consuming_one_round(
                 self.args, self.rank, self.comm, self.network, sampled_client_indexes,
-                self.num_of_model_params * 4, list(range(1, self.size))
+                self.num_of_model_params * 4, group_comm_round_list, list(range(1, self.size))
             )
 
         # estimate parameters

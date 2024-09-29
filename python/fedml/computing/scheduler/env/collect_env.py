@@ -81,13 +81,13 @@ def collect_env(args=None):
         print("No GPU devices")
 
     print("\n======== Network Connection Checking ========")
-    is_open_connected = ClientDiagnosis.check_open_connection(args)
+    is_open_connected = False#ClientDiagnosis.check_open_connection(args)
     if is_open_connected:
         print("The connection to https://open{}.fedml.ai is OK.".format("-dev" if args is not None and hasattr(args, "config_version") and args.config_version == "dev" else ""))
     else:
         print("You can not connect to https://open{}.fedml.ai.".format("-dev" if args is not None and hasattr(args, "config_version") and args.config_version == "dev" else ""))
 
-    is_s3_connected = ClientDiagnosis.check_s3_connection(args)
+    is_s3_connected = False#ClientDiagnosis.check_s3_connection(args)
     if is_s3_connected:
         print("The connection to AWS S3 is OK.")
     else:

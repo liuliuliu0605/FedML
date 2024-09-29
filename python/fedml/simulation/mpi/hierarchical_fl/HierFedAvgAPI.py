@@ -213,12 +213,22 @@ def setup_ns3_simulator(
     ):
     ns.core.GlobalValue.Bind("SimulatorImplementationType", ns.core.StringValue("ns3::DistributedSimulatorImpl"))
     # initialize network
+    if args.lan_capacity_ratio_list != "":
+        lan_capacity_ratio_list = [float(item) for item in args.lan_capacity_ratio_list.split(",")]
+    else:
+        lan_capacity_ratio_list = None
+    if args.wan_capacity_ratio_list != "":
+        wan_capacity_ratio_list = [float(item) for item in args.wan_capacity_ratio_list.split(",")]
+    else:
+        wan_capacity_ratio_list = None
     network = Network(access_link_capacity=args.access_link_capacity,
                       core_link_capacity=args.core_link_capacity,
                       lan_capacity=args.lan_capacity,
                       verbose=False,
                       mpi_comm=mpi_comm,
-                      seed=args.random_seed)
+                      seed=args.random_seed,
+                      access_link_ratio=wan_capacity_ratio_list,
+                      lan_ratio=lan_capacity_ratio_list)
 
     network.read_underlay_graph(underlay_name=args.underlay)
     network.select_edge_pses(ps_num=args.group_num, method='mhrw')

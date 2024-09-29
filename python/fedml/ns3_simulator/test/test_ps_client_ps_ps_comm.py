@@ -31,6 +31,8 @@ client_num_list = [client_num+1 for i in range(ps_num)]
 underlay = args.underlay
 access_link_capacity = int(args.access_link_capacity)
 core_link_capacity = int(args.core_link_capacity)
+access_link_ratio = []#None
+lan_ratio = None#[0.0001,0.001,0.001,0.001,0.001,0.01,0.01,0.01,0.01]
 
 # initialize network
 network = Network(access_link_capacity=access_link_capacity,
@@ -38,7 +40,9 @@ network = Network(access_link_capacity=access_link_capacity,
                   lan_capacity=1e11,
                   verbose=verbose,
                   mpi_comm=py_comm,
-                  seed=seed)
+                  seed=seed,
+                  access_link_ratio=access_link_ratio,
+                  lan_ratio=lan_ratio)
 network.set_local_update_config(low=0, high=0)
 topology_manager = SymmetricTopologyManager(ps_num)
 topology_manager.generate_custom_topology(args)
@@ -70,6 +74,14 @@ for _ in range(1):
         ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay = network.run_fl_pfl(model_size=model_size,
                                                                             group_comm_round=group_comm_round,
                                                                             mix_comm_round=mix_comm_round,
+                                                                            start_time=0, stop_time=1000000,
+                                                                            fast_forward=fast_forward)
+    elif pattern == 'pfl2':
+        group_comm_round_list = [group_comm_round] * ps_num
+        group_comm_round_list = [10,1,1,1,1,1,1,1,1]
+        ps_ps_delay_matrix, ps_agg_delay, ps_mix_delay = network.run_fl_pfl2(model_size=model_size,
+                                                                            group_comm_round_list=group_comm_round_list,
+                                                                            mix_comm_round=mix_comm_round,
                                                                             start_time=0, stop_time=10000000,
                                                                             fast_forward=fast_forward)
     elif pattern == 'hfl':
@@ -92,13 +104,13 @@ for _ in range(1):
     time_consuming_matrix = ps_ps_delay_matrix
     if time_consuming_matrix is not None:
         print("agg delay:", ps_agg_delay)
-        print("mix delay:", ps_mix_delay)
-        print("%.2f MB: total=%.5fs, agg=%.5f, mix=%.5f (%ds)" %
-              (model_size / 1e6,
-               np.max(time_consuming_matrix),
-               ps_agg_delay.mean(),
-               ps_mix_delay.mean(),
-               t_b - t_a))
+        # print("mix delay:", ps_mix_delay)
+        # print("%.2f MB: total=%.5fs, agg=%.5f, mix=%.5f (%ds)" %
+        #       (model_size / 1e6,
+        #        np.max(time_consuming_matrix),
+        #        ps_agg_delay.mean(),
+        #        ps_mix_delay.mean(),
+        #        t_b - t_a))
     print("-" * 50)
 
 if enable_mpi:
